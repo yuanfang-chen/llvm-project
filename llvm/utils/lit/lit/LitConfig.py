@@ -114,7 +114,7 @@ class LitConfig(object):
         """load_config(config, path) - Load a config object from an alternate
         path."""
         if self.debug:
-            self.note('load_config from %r' % path)
+            self.note('load config from %r' % path)
         config.load_from_path(path, self)
         return config
 

@@ -100,7 +100,7 @@
 # RUN: FileCheck --check-prefix=CHECK-PYCONFIG-ERR < %t.err %s
 #
 # CHECK-PYCONFIG-ERR: loading suite config '{{.*(/|\\\\)py-config-discovery(/|\\\\)lit.site.cfg.py}}'
-# CHECK-PYCONFIG-ERR: load_config from '{{.*(/|\\\\)discovery(/|\\\\)lit.cfg}}'
+# CHECK-PYCONFIG-ERR: load config from '{{.*(/|\\\\)discovery(/|\\\\)lit.cfg}}'
 # CHECK-PYCONFIG-ERR: loaded config '{{.*(/|\\\\)discovery(/|\\\\)lit.cfg}}'
 # CHECK-PYCONFIG-ERR: loaded config '{{.*(/|\\\\)py-config-discovery(/|\\\\)lit.site.cfg.py}}'
 # CHECK-PYCONFIG-ERR-DAG: loading suite config '{{.*(/|\\\\)discovery(/|\\\\)subsuite(/|\\\\)lit.cfg}}'
@@ -130,7 +130,7 @@
 # RUN: FileCheck --check-prefix=CHECK-ASEXEC-ERR < %t.err %s
 #
 # CHECK-ASEXEC-ERR: loading suite config '{{.*(/|\\\\)exec-discovery(/|\\\\)lit.site.cfg}}'
-# CHECK-ASEXEC-ERR: load_config from '{{.*(/|\\\\)discovery(/|\\\\)lit.cfg}}'
+# CHECK-ASEXEC-ERR: load config from '{{.*(/|\\\\)discovery(/|\\\\)lit.cfg}}'
 # CHECK-ASEXEC-ERR: loaded config '{{.*(/|\\\\)discovery(/|\\\\)lit.cfg}}'
 # CHECK-ASEXEC-ERR: loaded config '{{.*(/|\\\\)exec-discovery(/|\\\\)lit.site.cfg}}'
 # CHECK-ASEXEC-ERR-DAG: loading suite config '{{.*(/|\\\\)discovery(/|\\\\)subsuite(/|\\\\)lit.cfg}}'
