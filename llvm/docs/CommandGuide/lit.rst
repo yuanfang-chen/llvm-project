@@ -38,11 +38,6 @@ Finally, :program:`lit` also supports additional options for only running a
 subset of the options specified on the command line, see
 :ref:`selection-options` for more information.
 
-:program:`lit` parses options from the environment variable ``LIT_OPTS`` after
-parsing options from the command line.  ``LIT_OPTS`` is primarily useful for
-supplementing or overriding the command-line options supplied to :program:`lit`
-by ``check`` targets defined by a project's build system.
-
 Users interested in the :program:`lit` architecture or designing a
 :program:`lit` testing implementation should see :ref:`lit-infrastructure`.
 
@@ -175,9 +170,8 @@ SELECTION OPTIONS
 
  Divide the set of selected tests into ``M`` equal-sized subsets or
  "shards", and run only one of them.  Must be used with the
- ``--run-shard=N`` option, which selects the shard to run. The environment
- variable ``LIT_NUM_SHARDS`` can also be used in place of this
- option. These two options provide a coarse mechanism for partitioning large
+ ``--run-shard=N`` option, which selects the shard to run.
+ These two options provide a coarse mechanism for partitioning large
  testsuites, for parallel execution on separate machines (say in a large
  testing farm).
 
@@ -185,15 +179,12 @@ SELECTION OPTIONS
 
  Select which shard to run, assuming the ``--num-shards=M`` option was
  provided. The two options must be used together, and the value of ``N``
- must be in the range ``1..M``. The environment variable
- ``LIT_RUN_SHARD`` can also be used in place of this option.
+ must be in the range ``1..M``.
 
 .. option:: --filter=REGEXP
 
-  Run only those tests whose name matches the regular expression specified in
-  ``REGEXP``. The environment variable ``LIT_FILTER`` can be also used in place
-  of this option, which is especially useful in environments where the call
-  to ``lit`` is issued indirectly.
+ Run only those tests whose name matches the regular expression specified in
+ ``REGEXP``.
 
 ADDITIONAL OPTIONS
 ------------------
@@ -210,6 +201,32 @@ ADDITIONAL OPTIONS
 .. option:: --show-tests
 
  List all of the discovered tests and exit.
+
+ENVIRONMENT VARIABLES
+------------------
+
+**LIT_OPTS**
+
+ Parsed after parsing options from the command line.  This is primarily useful
+ for supplementing or overriding the command-line options supplied to
+ :program:`lit` by ``check`` targets defined by a project's build system.
+
+**LIT_NUM_SHARDS**
+
+ Default value of ``--num-shards=M`` option when it is not specified.
+
+**LIT_RUN_SHARD**
+
+ Default value of ``--run-shard=N`` option when it is not specified.
+
+**LIT_FILTER**
+
+ Default value of ``--filter=REGEXP`` option when it is not specified.
+
+**LIT_USE_INTERNAL_SHELL**
+
+ Choose between lit's internal shell pipeline runner and a real shell.
+ (Use 1/0, yes/no or on/off as value)
 
 EXIT STATUS
 -----------
