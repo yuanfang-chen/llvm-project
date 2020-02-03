@@ -106,6 +106,7 @@ add_llvm_component_library(LLVMCodeGen
   NonRelocatableStringpool.cpp
   OptimizePHIs.cpp
   ParallelCG.cpp
+  PassManager.cpp
   PeepholeOptimizer.cpp
   PHIElimination.cpp
   PHIEliminationUtils.cpp

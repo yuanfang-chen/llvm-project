@@ -7,6 +7,7 @@ set(LLVM_LINK_COMPONENTS
   Core
   MC
   MIRParser
+  Passes
   SelectionDAG
   Support
   Target
@@ -19,6 +20,7 @@ add_llvm_unittest(CodeGenTests
   MachineInstrBundleIteratorTest.cpp
   MachineInstrTest.cpp
   MachineOperandTest.cpp
+  PassManagerTest.cpp
   ScalableVectorMVTsTest.cpp
   TypeTraitsTest.cpp
   TargetOptionsTest.cpp

@@ -554,12 +554,13 @@ public:
     Passes.emplace_back(new PassModelT(std::move(Pass)));
   }
 
-private:
+protected:
   using PassConceptT =
       detail::PassConcept<IRUnitT, AnalysisManagerT, ExtraArgTs...>;
 
   std::vector<std::unique_ptr<PassConceptT>> Passes;
 
+private:
   /// Flag indicating whether we should do debug logging.
   bool DebugLogging;
 };

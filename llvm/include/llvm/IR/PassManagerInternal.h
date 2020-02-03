@@ -301,6 +301,32 @@ struct AnalysisPassModel : AnalysisPassConcept<IRUnitT, PreservedAnalysesT,
   PassT Pass;
 };
 
+// SFINAE for doInitialization.
+template <typename PassT> class PassHasDoInitializationMethod {
+  using EnabledType = char;
+  using DisabledType = char[2];
+
+  template <typename T>
+  static EnabledType &check(decltype(&T::doInitialization));
+  template <typename T> static DisabledType &check(...);
+
+public:
+  enum { value = sizeof(check<PassT>(0)) == sizeof(EnabledType) };
+};
+
+// SFINAE for doFinalization.
+template <typename PassT> class PassHasDoFinalizationMethod {
+  using EnabledType = char;
+  using DisabledType = char[2];
+
+  template <typename T>
+  static EnabledType &check(decltype(&T::doFinalization));
+  template <typename T> static DisabledType &check(...);
+
+public:
+  enum { value = sizeof(check<PassT>(0)) == sizeof(EnabledType) };
+};
+
 } // end namespace detail
 
 } // end namespace llvm
