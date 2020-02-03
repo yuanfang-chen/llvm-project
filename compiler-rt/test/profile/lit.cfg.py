@@ -17,11 +17,6 @@ config.name = 'Profile-' + config.target_arch
 # Setup source root.
 config.test_source_root = os.path.dirname(__file__)
 
-# Setup executable root.
-if hasattr(config, 'profile_lit_binary_dir') and \
-        config.profile_lit_binary_dir is not None:
-    config.test_exec_root = os.path.join(config.profile_lit_binary_dir, config.name)
-
 if config.host_os in ['Linux']:
   extra_link_flags = ["-ldl"]
 elif config.host_os in ['Windows']:

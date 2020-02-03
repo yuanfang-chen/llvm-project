@@ -1379,6 +1379,11 @@ macro(set_llvm_build_mode)
   endif ()
 endmacro()
 
+function(add_entry_to_lit_config_map key val)
+  set_property(GLOBAL APPEND_STRING
+               PROPERTY LLVM_LIT_CONFIG_MAP "map_config('${key}', '${val}')\n")
+endfunction()
+
 # This function provides an automatic way to 'configure'-like generate a file
 # based on a set of common and custom variables, specifically targeting the
 # variables needed for the 'lit.site.cfg' files. This function bundles the
@@ -1452,11 +1457,14 @@ function(configure_lit_site_cfg site_in site_out)
 
   configure_file(${site_in} ${site_out} @ONLY)
   if (EXISTS "${ARG_MAIN_CONFIG}")
-    set(PYTHON_STATEMENT "map_config('${ARG_MAIN_CONFIG}', '${site_out}')")
-    get_property(LLVM_LIT_CONFIG_MAP GLOBAL PROPERTY LLVM_LIT_CONFIG_MAP)
-    set(LLVM_LIT_CONFIG_MAP "${LLVM_LIT_CONFIG_MAP}\n${PYTHON_STATEMENT}")
-    set_property(GLOBAL PROPERTY LLVM_LIT_CONFIG_MAP ${LLVM_LIT_CONFIG_MAP})
+    add_entry_to_lit_config_map(${ARG_MAIN_CONFIG} ${site_out})
   endif()
+endfunction()
+
+function(configure_lit_site_multi_cfg site_outs site_multi_out main_config)
+  # Generate test suite multi-config file for 'config_map'
+  file(GENERATE OUTPUT ${site_multi_out} CONTENT "${site_outs}")
+  add_entry_to_lit_config_map(${main_config} ${site_multi_out})
 endfunction()
 
 function(dump_all_cmake_variables)

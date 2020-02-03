@@ -45,6 +45,7 @@ if(OS_NAME MATCHES "SunOS")
   list(REMOVE_ITEM ASAN_TEST_ARCH x86_64)
 endif()
 
+set(LIT_SITE_MULTI_CFG_ASAN "CompilerRT ASAN")
 foreach(arch ${ASAN_TEST_ARCH})
   set(ASAN_TEST_TARGET_ARCH ${arch})
   set(ASAN_TEST_APPLE_PLATFORM "osx")
@@ -63,6 +64,8 @@ foreach(arch ${ASAN_TEST_ARCH})
     ${CMAKE_CURRENT_BINARY_DIR}/${CONFIG_NAME}/lit.site.cfg.py
     )
   list(APPEND ASAN_TESTSUITES ${CMAKE_CURRENT_BINARY_DIR}/${CONFIG_NAME})
+  string(APPEND LIT_SITE_MULTI_CFG_ASAN
+         "\n${CMAKE_CURRENT_BINARY_DIR}/${CONFIG_NAME}/lit.site.cfg.py")
 
   if(COMPILER_RT_ASAN_HAS_STATIC_RUNTIME)
     string(TOLOWER "-${arch}-${OS_NAME}-dynamic" ASAN_TEST_CONFIG_SUFFIX)
@@ -73,8 +76,14 @@ foreach(arch ${ASAN_TEST_ARCH})
       ${CMAKE_CURRENT_BINARY_DIR}/${CONFIG_NAME}/lit.site.cfg.py)
     list(APPEND ASAN_DYNAMIC_TESTSUITES
       ${CMAKE_CURRENT_BINARY_DIR}/${CONFIG_NAME})
+    string(APPEND LIT_SITE_MULTI_CFG_ASAN
+           "\n${CMAKE_CURRENT_BINARY_DIR}/${CONFIG_NAME}/lit.site.cfg.py")
   endif()
 endforeach()
+
+configure_lit_site_multi_cfg(${LIT_SITE_MULTI_CFG_ASAN}
+                             ${CMAKE_CURRENT_BINARY_DIR}/lit.site.multi.cfg
+                             ${CMAKE_CURRENT_SOURCE_DIR}/lit.cfg.py)
 
 # iOS and iOS simulator test suites
 # These are not added into "check-all", in order to run these tests, use

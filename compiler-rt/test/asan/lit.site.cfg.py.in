@@ -8,6 +8,7 @@ config.bits = "@ASAN_TEST_BITS@"
 config.apple_platform = "@ASAN_TEST_APPLE_PLATFORM@"
 config.asan_dynamic = @ASAN_TEST_DYNAMIC@
 config.target_arch = "@ASAN_TEST_TARGET_ARCH@"
+config.test_exec_root = os.path.dirname(__file__)
 
 # Load common config for all compiler-rt lit tests.
 lit_config.load_config(config, "@COMPILER_RT_BINARY_DIR@/test/lit.common.configured")
