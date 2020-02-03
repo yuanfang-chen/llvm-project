@@ -6,6 +6,7 @@ config.c_compiler = "@LIBFUZZER_TEST_COMPILER@"
 config.stdlib = "@LIBFUZZER_TEST_STDLIB@"
 config.apple_platform = "@LIBFUZZER_TEST_APPLE_PLATFORM@"
 config.name_suffix = "@LIBFUZZER_TEST_CONFIG_SUFFIX@"
+config.test_exec_root = "@LIBFUZZER_TEST_EXEC_DIR@"
 
 config.osx_sysroot_flag = "@OSX_SYSROOT_FLAG@"
 config.cmake_binary_dir = "@CMAKE_BINARY_DIR@"
