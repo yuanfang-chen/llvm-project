@@ -1390,14 +1390,11 @@ endfunction()
 # common variables that any Lit instance is likely to need, and custom
 # variables can be passed in.
 function(configure_lit_site_cfg site_in site_out)
-  cmake_parse_arguments(ARG "" "" "MAIN_CONFIG;OUTPUT_MAPPING" ${ARGN})
+  cmake_parse_arguments(ARG "" "" "MAIN_CONFIG" ${ARGN})
 
   if ("${ARG_MAIN_CONFIG}" STREQUAL "")
     get_filename_component(INPUT_DIR ${site_in} DIRECTORY)
     set(ARG_MAIN_CONFIG "${INPUT_DIR}/lit.cfg")
-  endif()
-  if ("${ARG_OUTPUT_MAPPING}" STREQUAL "")
-    set(ARG_OUTPUT_MAPPING "${site_out}")
   endif()
 
   foreach(c ${LLVM_TARGETS_TO_BUILD})

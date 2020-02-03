@@ -143,7 +143,7 @@ Here's the short story for getting up and running quickly with LLVM:
 
      .. code-block:: bat
 
-        C:\..\llvm> python ..\build\bin\llvm-lit --param build_config=Win32 --param build_mode=Debug --param llvm_site_config=../build/test/lit.site.cfg test
+        C:\..\llvm> python ..\build\bin\llvm-lit --param build_config=Win32 --param build_mode=Debug test
 
      This example assumes that Python is in your PATH variable, you
      have built a Win32 Debug version of llvm with a standard out of
@@ -154,7 +154,7 @@ Here's the short story for getting up and running quickly with LLVM:
 
      .. code-block:: bat
 
-        C:\..\llvm> python ..\build\bin\llvm-lit --param build_config=Win32 --param build_mode=Debug --param llvm_site_config=../build/test/lit.site.cfg test/path/to/test
+        C:\..\llvm> python ..\build\bin\llvm-lit --param build_config=Win32 --param build_mode=Debug test/path/to/test
 
 
 An Example Using the LLVM Tool Chain
