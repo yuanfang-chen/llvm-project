@@ -25,6 +25,38 @@
 # CHECK-BASIC-OUT: top-level-suite :: test-one
 # CHECK-BASIC-OUT: top-level-suite :: test-two
 
+# Check the discovery process for multi-configured test suite.
+#
+# RUN: %{lit} %{inputs}/discovery-multicfg \
+# RUN:   -j 1 --debug --show-tests --show-suites \
+# RUN:   -v > %t.out 2> %t.err
+# RUN: FileCheck --check-prefix=CHECK-MULTI-OUT < %t.out %s
+# RUN: FileCheck --check-prefix=CHECK-MULTI-ERR < %t.err %s
+#
+# CHECK-MULTI-ERR: loading suite config '{{.*(/|\\\\)exec-discovery(/|\\\\)lit.site.cfg}}'
+# CHECK-MULTI-ERR-DAG: loading suite config '{{.*(/|\\\\)exec-discovery-in-tree(/|\\\\)obj(/|\\\\)lit.site.cfg}}'
+# CHECK-MULTI-ERR-DAG: loading local config '{{.*(/|\\\\)discovery(/|\\\\)subdir(/|\\\\)lit.local.cfg}}'
+# CHECK-MULTI-ERR-DAG: loading suite config '{{.*(/|\\\\)discovery(/|\\\\)subsuite(/|\\\\)lit.cfg}}'
+#
+# CHECK-MULTI-OUT: -- Test Suites --
+# CHECK-MULTI-OUT:   sub-suite - 2 tests
+# CHECK-MULTI-OUT:     Source Root: {{.*[/\\]discovery[/\\]subsuite$}}
+# CHECK-MULTI-OUT:     Exec Root  : {{.*[/\\]discovery[/\\]subsuite$}}
+# CHECK-MULTI-OUT:   test-multi-cfg-test-suite :: exec-discovery-in-tree-suite - 1 tests
+# CHECK-MULTI-OUT:     Source Root: {{.*[/\\]exec-discovery-in-tree$}}
+# CHECK-MULTI-OUT:     Exec Root  : {{.*[/\\]exec-discovery-in-tree[/\\]obj$}}
+# CHECK-MULTI-OUT:   test-multi-cfg-test-suite :: top-level-suite - 3 tests
+# CHECK-MULTI-OUT:     Source Root: {{.*[/\\]discovery$}}
+# CHECK-MULTI-OUT:     Exec Root  : {{.*[/\\]exec-discovery$}}
+#
+# CHECK-MULTI-OUT: -- Available Tests --
+# CHECK-MULTI-OUT: sub-suite :: test-one
+# CHECK-MULTI-OUT: sub-suite :: test-two
+# CHECK-MULTI-OUT: exec-discovery-in-tree-suite :: test-one
+# CHECK-MULTI-OUT: top-level-suite :: subdir/test-three
+# CHECK-MULTI-OUT: top-level-suite :: test-one
+# CHECK-MULTI-OUT: top-level-suite :: test-two
+
 # Check discovery when providing the special builtin 'config_map'
 # RUN: %{python} %{inputs}/config-map-discovery/driver.py \
 # RUN:           %{inputs}/config-map-discovery/main-config/lit.cfg \

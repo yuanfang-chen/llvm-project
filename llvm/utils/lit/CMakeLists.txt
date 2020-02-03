@@ -8,6 +8,10 @@ configure_lit_site_cfg(
   "${CMAKE_CURRENT_BINARY_DIR}/tests/lit.site.cfg"
   )
 
+# Test multi-configured test suite discovery.
+file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/lit.site.multi.cfg
+     CONTENT "test-multi-cfg-test-suite\n${CMAKE_CURRENT_BINARY_DIR}/tests/Inputs/exec-discovery/lit.site.cfg\n${CMAKE_CURRENT_BINARY_DIR}/tests/Inputs/exec-discovery-in-tree/obj/lit.site.cfg")
+
 # Lit's test suite creates output files next to the sources which makes the
 # source tree dirty. This is undesirable because we do out of source builds.
 # To work around this the tests and the configuration file are copied into the
@@ -18,6 +22,8 @@ add_custom_target(prepare-check-lit
   COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_BINARY_DIR}/tests"
   COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/tests" "${CMAKE_CURRENT_BINARY_DIR}/tests"
   COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg" "${CMAKE_CURRENT_BINARY_DIR}/tests"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/tests/Inputs/discovery-multicfg"
+  COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_BINARY_DIR}/lit.site.multi.cfg" "${CMAKE_CURRENT_BINARY_DIR}/tests/Inputs/discovery-multicfg"
   COMMENT "Preparing lit tests"
 )
 

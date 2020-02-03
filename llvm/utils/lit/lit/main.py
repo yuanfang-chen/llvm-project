@@ -128,34 +128,55 @@ def create_params(builtin_params, user_params):
     params.update([parse(p) for p in user_params])
     return params
 
+def getRoot(config):
+  if not config.parent:
+    return config
+  return getRoot(config.parent)
+
 def print_suites_or_tests(tests, opts):
-    # Aggregate the tests by suite.
+    # Aggregate the tests by suite and test config (ignoring local config)
     suitesAndTests = {}
     for result_test in tests:
         if result_test.suite not in suitesAndTests:
-            suitesAndTests[result_test.suite] = []
-        suitesAndTests[result_test.suite].append(result_test)
+            suitesAndTests[result_test.suite] = {}
+        ts_cfg = getRoot(result_test.config)
+        if ts_cfg not in suitesAndTests[result_test.suite]:
+            suitesAndTests[result_test.suite][ts_cfg] = []
+        suitesAndTests[result_test.suite][ts_cfg].append(result_test)
     suitesAndTests = list(suitesAndTests.items())
     suitesAndTests.sort(key = lambda item: item[0].name)
 
     # Show the suites, if requested.
     if opts.showSuites:
         print('-- Test Suites --')
-        for ts,ts_tests in suitesAndTests:
-            print('  %s - %d tests' %(ts.name, len(ts_tests)))
-            print('    Source Root: %s' % ts.source_root)
-            print('    Exec Root  : %s' % ts.exec_root)
-            if ts.config.available_features:
-                print('    Available Features : %s' % ' '.join(
-                    sorted(ts.config.available_features)))
+        for ts,ts_cfgs in suitesAndTests:
+            ts_cfgs = list(ts_cfgs.items())
+            ts_cfgs.sort(key = lambda item: item[0].name)
+            for tc, tc_tests in ts_cfgs:
+                if ts.is_multi_cfg:
+                    print('  %s :: %s - %d tests' %
+                          (ts.name, tc.name, len(tc_tests)))
+                else:
+                    print('  %s - %d tests' %(tc.name, len(tc_tests)))
+                print('    Source Root: %s' % tc.test_source_root)
+                print('    Exec Root  : %s' % tc.test_exec_root)
+                if tc.available_features:
+                    print('    Available Features : %s' % ' '.join(
+                        sorted(tc.available_features)))
 
     # Show the tests, if requested.
     if opts.showTests:
         print('-- Available Tests --')
-        for ts,ts_tests in suitesAndTests:
-            ts_tests.sort(key = lambda test: test.path_in_suite)
-            for test in ts_tests:
-                print('  %s' % (test.getFullName(),))
+        for ts,ts_cfgs in suitesAndTests:
+            ts_cfgs = list(ts_cfgs.items())
+            ts_cfgs.sort(key = lambda item: item[0].name)
+
+            # tests = []
+            for tc, tc_tests in ts_cfgs:
+                #tests.extend(tc_tests)
+                tc_tests.sort(key = lambda test: test.path_in_suite)
+                for test in tc_tests:
+                    print('  %s' % (test.getFullName(),))
 
 
 def determine_order(tests, order):
@@ -357,7 +378,7 @@ def write_test_results_xunit(tests, opts):
     # Collect the tests, indexed by test suite
     by_suite = {}
     for result_test in tests:
-        suite = result_test.suite.config.name
+        suite = result_test.config.name
         if suite not in by_suite:
             by_suite[suite] = {
                                 'passes'   : 0,
