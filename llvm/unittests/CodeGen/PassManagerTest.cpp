@@ -136,12 +136,12 @@ TEST_F(PassManagerTest, Basic) {
   // Create LLVMTargetMachine to initilize MachineModuleAnalysis.
   std::string Error;
   const Target *T =
-      TargetRegistry::lookupTarget("x86_64-unknonwn-linux", Error);
+      TargetRegistry::lookupTarget("x86_64-unknown-linux", Error);
   assert(T);
 
   TargetOptions Options;
   std::unique_ptr<TargetMachine> TM(
-      T->createTargetMachine("x86_64-unknonwn-linux", "", "", Options, None,
+      T->createTargetMachine("x86_64-unknown-linux", "", "", Options, None,
                              None, CodeGenOpt::Aggressive));
   LLVMTargetMachine *LLVMTM = static_cast<LLVMTargetMachine *>(TM.get());
   M->setDataLayout(TM->createDataLayout());

@@ -55,12 +55,12 @@ public:
   operator=(MachineFunctionIRAnalysisManager &&) = default;
 
   template <typename PassT> typename PassT::Result &getResult(const Module &M) {
-    assert (MAM);
+    assert(MAM);
     return MAM->getResult<PassT>(const_cast<Module &>(M));
   }
   template <typename PassT>
   typename PassT::Result &getResult(const Function &F) {
-    assert (FAM);
+    assert(FAM);
     return FAM->getResult<PassT>(const_cast<Function &>(F));
   }
 };
