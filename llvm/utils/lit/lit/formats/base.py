@@ -12,7 +12,7 @@ class TestFormat(object):
 class FileBasedTest(TestFormat):
     def getTestsInDirectory(self, testSuite, path_in_suite,
                             litConfig, localConfig):
-        source_path = testSuite.getSourcePath(path_in_suite)
+        source_path = localConfig.getSourcePath(path_in_suite)
         for filename in os.listdir(source_path):
             # Ignore dot files and excluded tests.
             if (filename.startswith('.') or
@@ -52,7 +52,7 @@ class OneCommandPerFileTest(TestFormat):
                             litConfig, localConfig):
         dir = self.dir
         if dir is None:
-            dir = testSuite.getSourcePath(path_in_suite)
+            dir = localConfig.getSourcePath(path_in_suite)
 
         for dirname,subdirs,filenames in os.walk(dir):
             if not self.recursive:

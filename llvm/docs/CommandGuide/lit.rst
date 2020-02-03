@@ -60,8 +60,9 @@ GENERAL OPTIONS
 
 .. option:: --config-prefix=NAME
 
- Search for :file:`{NAME}.cfg` and :file:`{NAME}.site.cfg` when searching for
- test suites, instead of :file:`lit.cfg` and :file:`lit.site.cfg`.
+ Search for :file:`{NAME}.cfg`, :file:`{NAME}.site.cfg` and
+ :file:`{NAME}.site.multi.cfg` when searching for test suites, instead of
+ :file:`lit.cfg`, :file:`lit.site.cfg` and :file:`{NAME}.site.multi.cfg`.
 
 .. option:: -D NAME[=VALUE], --param NAME[=VALUE]
 
@@ -230,10 +231,19 @@ as part of *test discovery*.
 
 In the :program:`lit` model, every test must exist inside some *test suite*.
 :program:`lit` resolves the inputs specified on the command line to test suites
-by searching upwards from the input path until it finds a :file:`lit.cfg` or
-:file:`lit.site.cfg` file.  These files serve as both a marker of test suites
-and as configuration files which :program:`lit` loads in order to understand
-how to find and run the tests inside the test suite.
+by searching upwards from the input path until it finds a :file:`lit.cfg`,
+:file:`lit.site.cfg` or :file:`lit.site.multi.cfg` file. These files serve as
+both a marker of test suites and as configuration files which :program:`lit`
+loads in order to understand how to find and run the tests inside the test suite.
+
+:file:`lit.site.multi.cfg` file is used when the test suite has multiple
+configurations. The file content should be:
+
+.. code-block:: none
+  <test suite name>
+  /path/to/cfg_dir1/lit.site.cfg
+  /path/to/cfg_dir2/lit.site.cfg
+  ...
 
 Once :program:`lit` has mapped the inputs into test suites it traverses the
 list of inputs adding tests for individual files and recursively searching for
@@ -307,10 +317,10 @@ As described in :ref:`test-discovery`, tests are always located inside a *test
 suite*.  Test suites serve to define the format of the tests they contain, the
 logic for finding those tests, and any additional information to run the tests.
 
-:program:`lit` identifies test suites as directories containing ``lit.cfg`` or
-``lit.site.cfg`` files (see also :option:`--config-prefix`).  Test suites are
-initially discovered by recursively searching up the directory hierarchy for
-all the input files passed on the command line.  You can use
+:program:`lit` identifies test suites as directories containing ``lit.cfg``,
+``lit.site.cfg`` or ``lit.site.multi.cfg`` files (see also :option:`--config-prefix`).
+Test suites are initially discovered by recursively searching up the directory
+hierarchy for all the input files passed on the command line.  You can use
 :option:`--show-suites` to display the discovered test suites at startup.
 
 Once a test suite is discovered, its config file is loaded.  Config files

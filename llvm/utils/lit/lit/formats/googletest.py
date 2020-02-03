@@ -81,7 +81,7 @@ class GoogleTest(TestFormat):
 
     def getTestsInDirectory(self, testSuite, path_in_suite,
                             litConfig, localConfig):
-        source_path = testSuite.getSourcePath(path_in_suite)
+        source_path = localConfig.getSourcePath(path_in_suite)
         for subdir in self.test_sub_dirs:
             dir_path = os.path.join(source_path, subdir)
             if not os.path.isdir(dir_path):

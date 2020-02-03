@@ -144,6 +144,12 @@ class TestingConfig:
             self.test_source_root = str(self.test_source_root)
         self.excludes = set(self.excludes)
 
+    def getSourcePath(self, components):
+        return os.path.join(self.test_source_root, *components)
+
+    def getExecPath(self, components):
+        return os.path.join(self.test_exec_root, *components)
+
     @property
     def root(self):
         """root attribute - The root configuration for the test suite."""

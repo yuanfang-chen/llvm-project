@@ -179,20 +179,13 @@ class TestSuite:
     """TestSuite - Information on a group of tests.
 
     A test suite groups together a set of logically related tests.
+    This set of tests could be configured in different ways.
     """
 
-    def __init__(self, name, source_root, exec_root, config):
+    def __init__(self, name, configs, is_multi_cfg):
         self.name = name
-        self.source_root = source_root
-        self.exec_root = exec_root
-        # The test suite configuration.
-        self.config = config
-
-    def getSourcePath(self, components):
-        return os.path.join(self.source_root, *components)
-
-    def getExecPath(self, components):
-        return os.path.join(self.exec_root, *components)
+        self.configs = configs
+        self.is_multi_cfg = is_multi_cfg
 
 class Test:
     """Test - Information on a single test instance."""
@@ -233,7 +226,7 @@ class Test:
         return self.result.code.isFailure
 
     def getFullName(self):
-        return self.suite.config.name + ' :: ' + '/'.join(self.path_in_suite)
+        return self.config.name + ' :: ' + '/'.join(self.path_in_suite)
 
     def getFilePath(self):
         if self.file_path:
@@ -241,10 +234,10 @@ class Test:
         return self.getSourcePath()
 
     def getSourcePath(self):
-        return self.suite.getSourcePath(self.path_in_suite)
+        return self.config.getSourcePath(self.path_in_suite)
 
     def getExecPath(self):
-        return self.suite.getExecPath(self.path_in_suite)
+        return self.config.getExecPath(self.path_in_suite)
 
     def isExpectedToFail(self):
         """
@@ -258,7 +251,7 @@ class Test:
         """
 
         features = self.config.available_features
-        triple = getattr(self.suite.config, 'target_triple', "")
+        triple = getattr(self.config, 'target_triple', "")
 
         # Check if any of the xfails match an available feature or the target.
         for item in self.xfails:
@@ -331,7 +324,7 @@ class Test:
         """
 
         features = self.config.available_features
-        triple = getattr(self.suite.config, 'target_triple', "")
+        triple = getattr(self.config, 'target_triple', "")
 
         try:
             return [item for item in self.unsupported
@@ -347,14 +340,14 @@ class Test:
         This can be used for test suites with long running tests to maximize
         parallelism or where it is desirable to surface their failures early.
         """
-        return self.suite.config.is_early
+        return self.config.is_early
 
     def writeJUnitXML(self, fil):
         """Write the test's report xml representation to a file handle."""
         test_name = quoteattr(self.path_in_suite[-1])
         test_path = self.path_in_suite[:-1]
         safe_test_path = [x.replace(".","_") for x in test_path]
-        safe_name = self.suite.name.replace(".","-")
+        safe_name = self.config.name.replace(".","-")
 
         if safe_test_path:
             class_name = safe_name + "." + "/".join(safe_test_path) 
