@@ -61,7 +61,8 @@ def getTestSuite(item, litConfig, testSuiteCache, testConfigCache):
 
         # Read multi-cfg test suite
         cfgpaths = []
-        ts_multi = any(cfgpath.endswith(s) for s in litConfig.multiconfig_suffixes)
+        ts_multi = any(
+            cfgpath.endswith(s) for s in litConfig.multiconfig_suffixes)
         if ts_multi:
             f = open(cfgpath)
             ts_name = next(f).rstrip()
@@ -86,8 +87,10 @@ def getTestSuite(item, litConfig, testSuiteCache, testConfigCache):
                     litConfig.note('loading suite config %r' % cp)
                 cfg = TestingConfig.fromdefaults(litConfig)
                 cfg.load_from_path(cp, litConfig)
-                cfg.test_exec_root = os.path.realpath(cfg.test_exec_root or path)
-                cfg.test_source_root = os.path.realpath(cfg.test_source_root or path)
+                cfg.test_exec_root = os.path.realpath(cfg.test_exec_root
+                                                      or path)
+                cfg.test_source_root = os.path.realpath(cfg.test_source_root
+                                                        or path)
                 testConfigCache[cp] = cfg
             cfgs.append(cfg)
 
@@ -130,7 +133,8 @@ def getLocalConfig(tc, path_in_suite, litConfig, cache):
 
         # Check if there is a local configuration file.
         source_path = tc.getSourcePath(path_in_suite)
-        cfgpath = chooseConfigFileFromDir(source_path, litConfig.local_config_names)
+        cfgpath = chooseConfigFileFromDir(source_path,
+                                          litConfig.local_config_names)
 
         # If not, just reuse the parent config.
         if not cfgpath:
@@ -156,10 +160,12 @@ def getLocalConfig(tc, path_in_suite, litConfig, cache):
 
     return search(path_in_suite)
 
-def getTests(path, litConfig, testSuiteCache, testConfigCache, localConfigCache):
+
+def getTests(path, litConfig, testSuiteCache, testConfigCache,
+             localConfigCache):
     # Find the test suite for this input and its relative path.
-    ts,path_in_suite = getTestSuite(path, litConfig,
-                                    testSuiteCache, testConfigCache)
+    ts,path_in_suite = getTestSuite(path, litConfig, testSuiteCache,
+                                    testConfigCache)
     if ts is None:
         litConfig.warning('unable to find test suite for %r' % path)
         return (),()
@@ -167,15 +173,15 @@ def getTests(path, litConfig, testSuiteCache, testConfigCache, localConfigCache)
     tests = []
     for tc in ts.configs:
         if litConfig.debug:
-            litConfig.note('resolved input %r to %r::%r' % (path, tc.name,
-                                                            path_in_suite))
-        tests.extend(getTestsInSuite(ts, tc, path_in_suite, litConfig,
-                                     testSuiteCache, testConfigCache,
-                                     localConfigCache))
+            litConfig.note('resolved input %r to %r::%r' %
+                           (path, tc.name, path_in_suite))
+        tests.extend(
+            getTestsInSuite(ts, tc, path_in_suite, litConfig, testSuiteCache,
+                            testConfigCache, localConfigCache))
     return tests
 
-def getTestsInSuite(ts, tc, path_in_suite, litConfig,
-                    testSuiteCache, testConfigCache, localConfigCache):
+def getTestsInSuite(ts, tc, path_in_suite, litConfig, testSuiteCache,
+                    testConfigCache, localConfigCache):
     # Check that the source path exists (errors here are reported by the
     # caller).
     source_path = tc.getSourcePath(path_in_suite)
@@ -215,10 +221,12 @@ def getTestsInSuite(ts, tc, path_in_suite, litConfig,
         file_execpath = tc.getExecPath(subpath)
         if dirContainsTestSuite(file_execpath, litConfig):
             sub_ts, subpath_in_suite = getTestSuite(file_execpath, litConfig,
-                                                    testSuiteCache, testConfigCache)
+                                                    testSuiteCache,
+                                                    testConfigCache)
         elif dirContainsTestSuite(file_sourcepath, litConfig):
             sub_ts, subpath_in_suite = getTestSuite(file_sourcepath, litConfig,
-                                                    testSuiteCache, testConfigCache)
+                                                    testSuiteCache,
+                                                    testConfigCache)
         else:
             sub_ts = None
 
@@ -246,7 +254,9 @@ def getTestsInSuite(ts, tc, path_in_suite, litConfig,
                 yield res
 
             if sub_ts and not N:
-                litConfig.warning('test suite %r contained no tests' % sub_tc.name)
+                litConfig.warning('test suite %r contained no tests' %
+                                  sub_tc.name)
+
 
 def find_tests_for_inputs(lit_config, inputs):
     """
@@ -274,12 +284,13 @@ def find_tests_for_inputs(lit_config, inputs):
     # Load the tests from the inputs.
     tests = []
     test_suite_cache = {}
-    test_config_cache = {} # Avoid reloading the same test config.
+    test_config_cache = {}  # Avoid reloading the same test config.
     local_config_cache = {}
     for input in actual_inputs:
         prev = len(tests)
-        tests.extend(getTests(input, lit_config, test_suite_cache,
-                              test_config_cache, local_config_cache))
+        tests.extend(
+            getTests(input, lit_config, test_suite_cache, test_config_cache,
+                     local_config_cache))
         if prev == len(tests):
             lit_config.warning('input %r contained no tests' % input)
 
