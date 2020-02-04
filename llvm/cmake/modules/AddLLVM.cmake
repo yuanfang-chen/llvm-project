@@ -1458,6 +1458,12 @@ function(configure_lit_site_cfg site_in site_out)
   endif()
 endfunction()
 
+function(configure_lit_site_multi_cfg site_outs site_multi_out main_config)
+  # Generate test suite multi-config file for 'config_map'
+  file(GENERATE OUTPUT ${site_multi_out} CONTENT "${site_outs}")
+  add_entry_to_lit_config_map(${main_config} ${site_multi_out})
+endfunction()
+
 function(dump_all_cmake_variables)
   get_cmake_property(_variableNames VARIABLES)
   foreach (_variableName ${_variableNames})

@@ -22,11 +22,11 @@ if(COMPILER_RT_INCLUDE_TESTS)
   list(APPEND LIBFUZZER_TEST_DEPS FuzzedDataProviderUnitTests)
 endif()
 
-set(LIT_SITE_FUZZER_MULTI_CFG "libFuzzer")
+set(LIT_SITE_MULTI_CFG_FUZZER "CompilerRT fuzzer")
 add_lit_testsuite(check-fuzzer
   "Running libFuzzer tests for all configurations"
   ${CMAKE_CURRENT_BINARY_DIR}
-  DEPENDS ${LIBFUZZER_TEST_DEPS} ${TEST_DEPS})
+  DEPENDS ${LIBFUZZER_TEST_DEPS})
 if(TEST_DEPS)
   add_dependencies(check-fuzzer ${TEST_DEPS})
 endif()
@@ -73,7 +73,7 @@ macro(test_fuzzer stdlib)
       ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
       ${CMAKE_CURRENT_BINARY_DIR}/${CONFIG_NAME}/lit.site.cfg.py
       )
-    string(APPEND LIT_SITE_FUZZER_MULTI_CFG
+    string(APPEND LIT_SITE_MULTI_CFG_FUZZER
            "\n${CMAKE_CURRENT_BINARY_DIR}/${CONFIG_NAME}/lit.site.cfg.py")
 
     add_lit_testsuite(check-fuzzer-${stdlib_name}-${arch}
@@ -98,11 +98,9 @@ if("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
   endif()
 endif()
 
-# Generate test suite multi-config file for 'config_map'
-file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/lit.site.multi.cfg
-     CONTENT "${LIT_SITE_FUZZER_MULTI_CFG}")
-add_entry_to_lit_config_map(${CMAKE_CURRENT_SOURCE_DIR}/lit.cfg.py
-                            ${CMAKE_CURRENT_BINARY_DIR}/lit.site.multi.cfg)
+configure_lit_site_multi_cfg(${LIT_SITE_MULTI_CFG_FUZZER}
+                             ${CMAKE_CURRENT_BINARY_DIR}/lit.site.multi.cfg
+                             ${CMAKE_CURRENT_SOURCE_DIR}/lit.cfg.py)
 
 if (APPLE)
   set(EXCLUDE_FROM_ALL ON)
