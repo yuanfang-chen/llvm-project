@@ -69,6 +69,7 @@ namespace llvm {
 /// from the \c AnalysisInfoMixin to get a static ID method used to identify
 /// the analysis in the pass management infrastructure.
 struct alignas(8) AnalysisKey {};
+using PassKey = AnalysisKey;
 
 /// A special type used to provide an address that identifies a set of related
 /// analyses.  These sets are primarily used below to mark sets of analyses as
@@ -559,6 +560,8 @@ protected:
       detail::PassConcept<IRUnitT, AnalysisManagerT, ExtraArgTs...>;
 
   std::vector<std::unique_ptr<PassConceptT>> Passes;
+  std::vecotr<std::pair<StringRef, std::unique_ptr<PassConceptT>>> TargetPasses;
+  std::vecotr<std::pair<StringRef, std::unique_ptr<PassConceptT>>> InsertedPasses;
 
 private:
   /// Flag indicating whether we should do debug logging.

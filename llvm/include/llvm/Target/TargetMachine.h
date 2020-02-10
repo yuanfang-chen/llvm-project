@@ -285,12 +285,26 @@ public:
     return true;
   }
 
+  virtual bool
+  addPassesToEmitFileWithNewPassManager(PassManagerBase &, raw_pwrite_stream &,
+                      raw_pwrite_stream *, CodeGenFileType,
+                      bool /*DisableVerify*/ = true,
+                      MachineModuleInfoWrapperPass *MMIWP = nullptr) {
+    return true;
+  }
+
   /// Add passes to the specified pass manager to get machine code emitted with
   /// the MCJIT. This method returns true if machine code is not supported. It
   /// fills the MCContext Ctx pointer which can be used to build custom
   /// MCStreamer.
   ///
   virtual bool addPassesToEmitMC(PassManagerBase &, MCContext *&,
+                                 raw_pwrite_stream &,
+                                 bool /*DisableVerify*/ = true) {
+    return true;
+  }
+
+  virtual bool addPassesToEmitMCWithNewPassManager(PassManagerBase &, MCContext *&,
                                  raw_pwrite_stream &,
                                  bool /*DisableVerify*/ = true) {
     return true;

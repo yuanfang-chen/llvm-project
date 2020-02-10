@@ -21,7 +21,8 @@
 // converted easily to use either constructor or lazy initialization in `run`
 // method.
 //
-// TODO: Add PassInstrumentation function.
+// TODO: Add MachineFunctionProperties support.
+// TODO: Add PassInstrumentation function. O/W substitutePass/InsertPass/DisablePass does not work.
 // TODO: Add a path in CodeGen to experiment with this interface.
 //
 //===----------------------------------------------------------------------===//

@@ -13,10 +13,9 @@
 #ifndef LLVM_CODEGEN_TARGETPASSCONFIG_H
 #define LLVM_CODEGEN_TARGETPASSCONFIG_H
 
-#include "llvm/Pass.h"
-#include "llvm/Support/CodeGen.h"
-#include <cassert>
-#include <string>
+#include "llvm/IR/PassManager.h"
+#include "llvm/CodeGen/PassManager.h"
+#include "llvm/CodeGen/TargetPassConfig.h"
 
 namespace llvm {
 
@@ -25,15 +24,6 @@ struct MachineSchedContext;
 class PassConfigImpl;
 class ScheduleDAGInstrs;
 class CSEConfigBase;
-
-// The old pass manager infrastructure is hidden in a legacy namespace now.
-namespace legacy {
-
-class PassManagerBase;
-
-} // end namespace legacy
-
-using legacy::PassManagerBase;
 
 /// Discriminated union of Pass ID types.
 ///
@@ -75,69 +65,16 @@ public:
   }
 };
 
-// TODO: New PM need this.
-struct PartialPipelineConfig {
-  AnalysisID StartBefore;
-  AnalysisID StartAfter;
-  AnalysisID StopBefore;
-  AnalysisID StopAfter;
-
-  unsigned StartBeforeInstanceNum = 0;
-  unsigned StartBeforeCount = 0;
-
-  unsigned StartAfterInstanceNum = 0;
-  unsigned StartAfterCount = 0;
-
-  unsigned StopBeforeInstanceNum = 0;
-  unsigned StopBeforeCount = 0;
-
-  unsigned StopAfterInstanceNum = 0;
-  unsigned StopAfterCount = 0;
-
-  bool Started = true;
-  bool Stopped = false;
-
-  /// Set the StartAfter, StartBefore and StopAfter passes to allow running only
-  /// a portion of the normal code-gen pass sequence.
-  ///
-  /// If the StartAfter and StartBefore pass ID is zero, then compilation will
-  /// begin at the normal point; otherwise, clear the Started flag to indicate
-  /// that passes should not be added until the starting pass is seen.  If the
-  /// Stop pass ID is zero, then compilation will continue to the end.
-  ///
-  /// This function expects that at least one of the StartAfter or the
-  /// StartBefore pass IDs is null.
-  PartialPipelineConfig();
-
-  void trySetStartAndStopStateBeforePass(AnalysisID PassID);
-  void trySetStartAndStopStateAfterPass(AnalysisID PassID);
-  bool isEnabledPipelinePass() const {
-    return Started && !Stopped;
-  }
-
-  /// Returns true if one of the `-start-after`, `-start-before`, `-stop-after`
-  /// or `-stop-before` options is set.
-  static bool hasLimitedCodeGenPipeline();
-
-  /// Returns true if none of the `-stop-before` and `-stop-after` options is
-  /// set.
-  static bool willCompleteCodeGenPipeline();
-
-  /// If hasLimitedCodeGenPipeline is true, this method
-  /// returns a string with the name of the options, separated
-  /// by \p Separator that caused this pipeline to be limited.
-  static std::string
-  getLimitedCodeGenPipelineReason(const char *Separator = "/");
-};
-
 /// Target-Independent Code Generator Pass Configuration Options.
 ///
 /// This is an ImmutablePass solely for the purpose of exposing CodeGen options
 /// to the internals of other CodeGen passes.
-class TargetPassConfig : public ImmutablePass {
+class TargetPassConfigWithNewPM : public PassInfoMixin<TargetPassConfigWithNewPM> {
 private:
   PartialPipelineConfig PPC;
-  PassManagerBase *PM = nullptr;
+  ModulePassManager *MPM = nullptr;
+  MachineFunctionPassManager *MFPM = nullptr;
+  //PassInstrumentationCallbacks &PIC;
   bool AddingMachinePasses = false;
 
 protected:
@@ -161,13 +98,11 @@ protected:
   bool addCoreISelPasses();
 
 public:
-  TargetPassConfig(LLVMTargetMachine &TM, PassManagerBase &pm);
-  // Dummy constructor.
-  TargetPassConfig();
+  TargetPassConfigWithNewPM(LLVMTargetMachine &TM, ModulePassManager &MPM, MachineFunctionPassManager &MFPM);
+  TargetPassConfigWithNewPM();
+  ~TargetPassConfigWithNewPM();
 
-  ~TargetPassConfig() override;
-
-  static char ID;
+  AnalysisKey ID;
 
   /// Get the right type of TargetMachine for this target.
   template<typename TMC> TMC &getTM() const {
@@ -189,30 +124,54 @@ public:
     setOpt(RequireCodeGenSCCOrder, Enable);
   }
 
+  // template <typename PassT> void addPass(PassT Pass) {
+  //   using PassModelT =
+  //       detail::PassModel<IRUnitT, PassT, PreservedAnalyses, AnalysisManagerT,
+  //                         ExtraArgTs...>;
+
+  //   Passes.emplace_back(new PassModelT(std::move(Pass)));
+  // }
+
+  // template <typename PassT> class GetPass {
+  //   PassT operator() {
+  //     return 
+  //   }
+  // };
+
+//   template <typename PassT>
+//   PassT GetPass() {
+//     return XPass(a, b, c);
+//   }
+
+// template<typename T, typename... Args>
+// T GetPass(Args&&... args)
+// {
+//     return T(std::forward<Args>(args)...);
+// }
+
+  // []() -> PassT {
+  //   return XPass(a, b, c);
+  // }
+// template<class PassT>
+// using Vec = vector<T, Alloc<T>>;
+
   /// Allow the target to override a specific pass without overriding the pass
   /// pipeline. When passes are added to the standard pipeline at the
   /// point where StandardID is expected, add TargetID in its place.
-  void substitutePass(AnalysisID StandardID, IdentifyingPassPtr TargetID);
+  template <typename PassT>
+  void substitutePass(StringRef StandardID, PassT TargetID);
 
   /// Insert InsertedPassID pass after TargetPassID pass.
-  void insertPass(AnalysisID TargetPassID, IdentifyingPassPtr InsertedPassID,
+  template <typename PassT>
+  void insertPass(StringRef TargetPassID, PassT InsertedPassID,
                   bool VerifyAfter = true, bool PrintAfter = true);
 
-  /// Allow the target to enable a specific standard pass by default.
-  void enablePass(AnalysisID PassID) { substitutePass(PassID, PassID); }
-
   /// Allow the target to disable a specific standard pass by default.
-  void disablePass(AnalysisID PassID) {
-    substitutePass(PassID, IdentifyingPassPtr());
-  }
-
-  /// Return the pass substituted for StandardID by the target.
-  /// If no substitution exists, return StandardID.
-  IdentifyingPassPtr getPassSubstitution(AnalysisID StandardID) const;
-
-  /// Return true if the pass has been substituted by the target or
-  /// overridden on the command line.
-  bool isPassSubstitutedOrOverridden(AnalysisID ID) const;
+  void disablePass(StringRef PassName);
+  // {
+  //   PIC.registerBeforePassCallback(
+  //       [PassName](StringRef P, Any) { return PassName != P; });
+  // }
 
   /// Return true if the optimized regalloc pipeline is enabled.
   bool getOptimizeRegAlloc() const;
@@ -433,15 +392,6 @@ protected:
   /// Utilities for targets to add passes to the pass manager.
   ///
 
-  /// Add a CodeGen pass at this point in the pipeline after checking overrides.
-  /// Return the pass that was added, or zero if no pass was added.
-  /// @p printAfter    if true and adding a machine function pass add an extra
-  ///                  machine printer pass afterwards
-  /// @p verifyAfter   if true and adding a machine function pass add an extra
-  ///                  machine verification pass afterwards.
-  AnalysisID addPass(AnalysisID PassID, bool verifyAfter = true,
-                     bool printAfter = true);
-
   /// Add a pass to the PassManager if that pass is supposed to be run, as
   /// determined by the StartAfter and StopAfter options. Takes ownership of the
   /// pass.
@@ -449,7 +399,8 @@ protected:
   ///                  machine printer pass afterwards
   /// @p verifyAfter   if true and adding a machine function pass add an extra
   ///                  machine verification pass afterwards.
-  void addPass(Pass *P, bool verifyAfter = true, bool printAfter = true);
+  template <typename PassT>
+  void addPass(PassT P, bool verifyAfter = true, bool printAfter = true);
 
   /// addMachinePasses helper to create the target-selected or overriden
   /// regalloc pass.
@@ -459,6 +410,8 @@ protected:
   /// and rewriting. \returns true if any passes were added.
   virtual bool addRegAssignmentFast();
   virtual bool addRegAssignmentOptimized();
+
+  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
 };
 
 } // end namespace llvm

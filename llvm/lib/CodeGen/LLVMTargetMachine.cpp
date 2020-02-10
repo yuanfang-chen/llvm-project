@@ -199,7 +199,7 @@ bool LLVMTargetMachine::addPassesToEmitFile(
   if (!PassConfig)
     return true;
 
-  if (!TargetPassConfig::willCompleteCodeGenPipeline()) {
+  if (!PartialPipelineConfig::willCompleteCodeGenPipeline()) {
     if (this->getTargetTriple().isOSAIX()) {
       // On AIX, we might manifest MCSymbols during SDAG lowering. For MIR
       // testing to be meaningful, we need to ensure that the symbols created
@@ -232,7 +232,7 @@ bool LLVMTargetMachine::addPassesToEmitMC(PassManagerBase &PM, MCContext *&Ctx,
       addPassesToGenerateCode(*this, PM, DisableVerify, *MMIWP);
   if (!PassConfig)
     return true;
-  assert(TargetPassConfig::willCompleteCodeGenPipeline() &&
+  assert(PartialPipelineConfig::willCompleteCodeGenPipeline() &&
          "Cannot emit MC with limited codegen pipeline");
 
   Ctx = &MMIWP->getMMI().getContext();

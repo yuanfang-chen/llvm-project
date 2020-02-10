@@ -161,6 +161,11 @@ static cl::opt<std::string> RemarksFormat(
     cl::desc("The format used for serializing remarks (default: YAML)"),
     cl::value_desc("format"), cl::init("yaml"));
 
+static cl::opt<bool> UseNewPM(
+    "use-new-pm",
+    cl::desc("Use new pass manager."),
+    cl::init(false));
+
 namespace {
 static ManagedStatic<std::vector<std::string>> RunPassNames;
 
@@ -502,16 +507,12 @@ static int compileModule(char **argv, LLVMContext &Context) {
     }
   }
 
-  // Build up all of the passes that we want to do to the module.
-  legacy::PassManager PM;
-
   // Add an appropriate TargetLibraryInfo pass for the module's triple.
   TargetLibraryInfoImpl TLII(Triple(M->getTargetTriple()));
 
   // The -disable-simplify-libcalls flag actually disables all builtin optzns.
   if (DisableSimplifyLibCalls)
     TLII.disableAllFunctions();
-  PM.add(new TargetLibraryInfoWrapperPass(TLII));
 
   // Add the target data from the target machine, if it exists, or the module.
   M->setDataLayout(Target->createDataLayout());
@@ -537,6 +538,13 @@ static int compileModule(char **argv, LLVMContext &Context) {
       FileType != CGFT_ObjectFile)
     WithColor::warning(errs(), argv[0])
         << ": warning: ignoring -mc-relax-all because filetype != obj";
+
+  if (UseNewPM)
+    return compileModuleWithNewPM(M, );
+
+  // Build up all of the passes that we want to do to the module.
+  legacy::PassManager PM;
+  PM.add(new TargetLibraryInfoWrapperPass(TLII));
 
   {
     raw_pwrite_stream *OS = &Out->os();
@@ -566,10 +574,10 @@ static int compileModule(char **argv, LLVMContext &Context) {
         return 1;
       }
       TargetPassConfig &TPC = *LLVMTM.createPassConfig(PM);
-      if (TPC.hasLimitedCodeGenPipeline()) {
+      if (PartialPipelineConfig::hasLimitedCodeGenPipeline()) {
         WithColor::warning(errs(), argv[0])
             << "run-pass cannot be used with "
-            << TPC.getLimitedCodeGenPipelineReason(" and ") << ".\n";
+            << PartialPipelineConfig::getLimitedCodeGenPipelineReason(" and ") << ".\n";
         return 1;
       }
 
