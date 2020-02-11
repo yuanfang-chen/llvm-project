@@ -163,6 +163,7 @@ add_llvm_component_library(LLVMCodeGen
   TargetLoweringObjectFileImpl.cpp
   TargetOptionsImpl.cpp
   TargetPassConfig.cpp
+  TargetPassConfigWithNewPM.cpp
   TargetRegisterInfo.cpp
   TargetSchedule.cpp
   TargetSubtargetInfo.cpp
