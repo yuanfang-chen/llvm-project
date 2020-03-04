@@ -867,6 +867,17 @@ def _executeShCmd(cmd, shenv, results, timeoutHelper):
 
     return exitCode
 
+diagline_re = re.compile('.+:\\d+:\\d+:\\s+(error|warning|note|remark):.+')
+def getRunLine(out):
+    for line in reversed(out.splitlines()):
+        m = re.compile('.*RUN: at line (\\d+)').match(line)
+        if m:
+            return m.group(1)
+    assert False
+
+def getDiagLine(file, line, exitCode, msg):
+    return '%s:%s(%s): %s' % (file, line, exitCode, msg)
+
 def executeScriptInternal(test, litConfig, tmpBase, commands, cwd):
     cmds = []
     for i, ln in enumerate(commands):
@@ -921,7 +932,15 @@ def executeScriptInternal(test, litConfig, tmpBase, commands, cwd):
         if result.stdout.strip():
             out += '# command output:\n%s\n' % (result.stdout,)
         if result.stderr.strip():
-            out += '# command stderr:\n%s\n' % (result.stderr,)
+            out += '# command stderr:\n'
+            diag_line_exists = diagline_re.match(result.stderr)
+            msg = 'RUN line failure' if diag_line_exists else result.stderr
+            out += '%s\n' % (getDiagLine(test.getSourcePath(),
+                                         getRunLine(out),
+                                         result.exitCode,
+                                         msg),)
+            if diag_line_exists:
+                out += '%s\n' % (result.stderr,)
         if not result.stdout.strip() and not result.stderr.strip():
             out += "note: command had no output on stdout or stderr\n"
 
@@ -940,6 +959,36 @@ def executeScriptInternal(test, litConfig, tmpBase, commands, cwd):
                 str(result.timeoutReached),)
 
     return out, err, exitCode, timeoutInfo
+
+def fixErrorMsg(err, test, script, exitCode):
+    if not err:
+        return
+
+    shell_re = re.compile(re.escape(script) + ':\\s+line\\s+(\\d+):\\s+(.+)$')
+    lines = err.splitlines()
+    first_error_line = -1
+
+    for idx, line in enumerate(lines):
+        # Fix the shell error message then we are done.
+        shell_match = shell_re.match(line)
+        if shell_match:
+            lines[idx] = getDiagLine(test.getSourcePath(),
+                                     shell_match.group(1),
+                                     exitCode,
+                                     shell_match.group(2))
+            return '\n'.join(lines)
+
+        # Find the first error line (one without '+ ' prefix).
+        if (first_error_line == -1 and
+            not line.startswith('+ ') and
+                (idx == 0 or lines[idx-1].startswith('+ '))):
+            first_error_line = idx
+
+    lines.insert(first_error_line, getDiagLine(test.getSourcePath(),
+                                               getRunLine(err),
+                                               exitCode,
+                                               'RUN line failure'))
+    return '\n'.join(lines)
 
 def executeScript(test, litConfig, tmpBase, commands, cwd):
     bashPath = litConfig.getBashPath()
@@ -994,8 +1043,10 @@ def executeScript(test, litConfig, tmpBase, commands, cwd):
         out, err, exitCode = lit.util.executeCommand(command, cwd=cwd,
                                        env=test.config.environment,
                                        timeout=litConfig.maxIndividualTestTime)
+        err = fixErrorMsg(err, test, script, exitCode)
         return (out, err, exitCode, None)
     except lit.util.ExecuteCommandTimeoutException as e:
+        e.err = fixErrorMsg(e.err, test, script, e.exitCode)
         return (e.out, e.err, e.exitCode, e.msg)
 
 def parseIntegratedTestScriptCommands(source_path, keywords):
