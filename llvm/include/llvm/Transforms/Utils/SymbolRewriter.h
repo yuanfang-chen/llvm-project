@@ -89,7 +89,7 @@ private:
   const Type Kind;
 };
 
-using RewriteDescriptorList = std::list<std::unique_ptr<RewriteDescriptor>>;
+using RewriteDescriptorList = std::list<std::shared_ptr<RewriteDescriptor>>;
 
 class RewriteMapParser {
 public:
