@@ -195,7 +195,12 @@ MachineModuleInfo::MachineModuleInfo(const LLVMTargetMachine *TM)
   initialize();
 }
 
-MachineModuleInfo::~MachineModuleInfo() { finalize(); }
+MachineModuleInfo::~MachineModuleInfo() {
+  finalize();
+  MachineFunctions.clear();
+  LastRequest = nullptr;
+  LastResult = nullptr;
+}
 
 //===- Address of Block Management ----------------------------------------===//
 
