@@ -690,6 +690,11 @@ the LLVM ``Function`` for the ``MachineFunction`` you're working on, use
 may not modify the LLVM ``Function`` or its contents from a
 ``MachineFunctionPass``.
 
+The ``MachineFunctionPass`` class for new pass manager
+---------------------------------
+
+New pass manager
+
 .. _writing-an-llvm-pass-registration:
 
 Pass registration
