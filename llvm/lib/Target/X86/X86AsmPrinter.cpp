@@ -49,12 +49,6 @@ X86AsmPrinter::X86AsmPrinter(TargetMachine &TM,
                              std::unique_ptr<MCStreamer> Streamer)
     : AsmPrinter(TM, std::move(Streamer)), SM(*this), FM(*this) {}
 
-
-// X86AsmPrinter::X86AsmPrinter(TargetMachine &TM,
-//                              std::unique_ptr<MCStreamer> Streamer)
-//     : AsmPrinter(TM, std::move(Streamer)), SM(*this), FM(*this) {}
-//     std::function<Expected<std::unique_ptr<MCStreamer>>(MCContext&)>
-
 //===----------------------------------------------------------------------===//
 // Primitive Helper Functions.
 //===----------------------------------------------------------------------===//
