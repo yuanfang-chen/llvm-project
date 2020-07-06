@@ -75,7 +75,7 @@ public:
   // already invalidated IRUnit is unsafe. There are ways to handle invalidated IRUnits
   // in a safe way, and we might pursue that as soon as there is a useful instrumentation
   // that needs it.
-  using BeforePassFunc = bool(StringRef, Any);
+  using BeforePassFunc = bool(StringRef, Any); // return false to skip pass
   using AfterPassFunc = void(StringRef, Any);
   using AfterPassInvalidatedFunc = void(StringRef);
   using BeforeAnalysisFunc = void(StringRef, Any);
