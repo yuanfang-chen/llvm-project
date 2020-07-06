@@ -14,6 +14,8 @@
 #ifndef LLVM_LIB_CODEGEN_MIRPRINTER_H
 #define LLVM_LIB_CODEGEN_MIRPRINTER_H
 
+#include "llvm/CodeGen/MachinePassManager.h"
+
 namespace llvm {
 
 class MachineBasicBlock;
@@ -21,6 +23,20 @@ class MachineFunction;
 class Module;
 class raw_ostream;
 template <typename T> class SmallVectorImpl;
+
+class PrintMIRPass : public PassInfoMixin<PrintMIRPass> {
+  raw_ostream &OS;
+  std::string MachineFunctions;
+
+public:
+  PrintMIRPass() : OS(dbgs()) {}
+  PrintMIRPass(raw_ostream &OS) : OS(OS) {}
+
+  PreservedAnalyses run(MachineFunction &MF, MachineFunctionAnalysisManager &);
+  Error doFinalization(Module &M, MachineFunctionAnalysisManager &);
+
+  static AnalysisKey Key;
+};
 
 /// Print LLVM IR using the MIR serialization format to the given output stream.
 void printMIR(raw_ostream &OS, const Module &M);

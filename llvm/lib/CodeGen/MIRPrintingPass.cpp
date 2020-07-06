@@ -16,9 +16,28 @@
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
+
+PreservedAnalyses PrintMIRPass::run(MachineFunction &MF,
+                                    MachineFunctionAnalysisManager &) {
+  std::string Str;
+  raw_string_ostream StrOS(Str);
+  printMIR(StrOS, MF);
+  MachineFunctions.append(StrOS.str());
+  return PreservedAnalyses::all();
+}
+
+Error PrintMIRPass::doFinalization(Module &M,
+                                   MachineFunctionAnalysisManager &) {
+  printMIR(OS, M);
+  OS << MachineFunctions;
+  return Error::success();
+}
+
+AnalysisKey PrintMIRPass::Key;
 
 namespace {
 
