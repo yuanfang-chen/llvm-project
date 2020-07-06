@@ -34,6 +34,7 @@
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCTargetOptions.h"
 #include "llvm/Pass.h"
+#include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
@@ -120,16 +121,17 @@ static cl::opt<cl::boolOrDefault> DebugifyAndStripAll(
         "Debugify MIR before and Strip debug after "
         "each pass except those known to be unsafe when debug info is present"),
     cl::ZeroOrMore);
-enum RunOutliner { AlwaysOutline, NeverOutline, TargetDefault };
+
 // Enable or disable the MachineOutliner.
 static cl::opt<RunOutliner> EnableMachineOutliner(
     "enable-machine-outliner", cl::desc("Enable the machine outliner"),
-    cl::Hidden, cl::ValueOptional, cl::init(TargetDefault),
-    cl::values(clEnumValN(AlwaysOutline, "always",
+    cl::Hidden, cl::ValueOptional, cl::init(RunOutliner::TargetDefault),
+    cl::values(clEnumValN(RunOutliner::AlwaysOutline, "always",
                           "Run on all functions guaranteed to be beneficial"),
-               clEnumValN(NeverOutline, "never", "Disable all outlining"),
+               clEnumValN(RunOutliner::NeverOutline, "never",
+                          "Disable all outlining"),
                // Sentinel value for unspecified option.
-               clEnumValN(AlwaysOutline, "", "")));
+               clEnumValN(RunOutliner::AlwaysOutline, "", "")));
 // Enable or disable FastISel. Both options are needed, because
 // FastISel is enabled by default with -fast, and we wish to be
 // able to enable or disable fast-isel independently from -O0.
@@ -170,7 +172,6 @@ static cl::opt<bool> EarlyLiveIntervals("early-live-intervals", cl::Hidden,
     cl::desc("Run live interval analysis earlier in the pipeline"));
 
 // Experimental option to use CFL-AA in codegen
-enum class CFLAAType { None, Steensgaard, Andersen, Both };
 static cl::opt<CFLAAType> UseCFLAA(
     "use-cfl-aa-in-codegen", cl::init(CFLAAType::None), cl::Hidden,
     cl::desc("Enable the new, experimental CFL alias analysis in CodeGen"),
@@ -395,6 +396,188 @@ void TargetPassConfig::setStartStopPasses() {
     report_fatal_error(Twine(StopBeforeOptName) + Twine(" and ") +
                        Twine(StopAfterOptName) + Twine(" specified!"));
   Started = (StartAfter == nullptr) && (StartBefore == nullptr);
+}
+
+CGPassBuilderOption llvm::getCGPassBuilderOption() {
+  CGPassBuilderOption Opt;
+
+#define SET_OPTION(Option)                                                     \
+  if (Option.getNumOccurrences())                                              \
+    Opt.Option = Option;
+
+  SET_OPTION(EnableFastISelOption)
+  SET_OPTION(EnableGlobalISelAbort)
+  SET_OPTION(EnableGlobalISelOption)
+  SET_OPTION(EnableIPRA)
+  SET_OPTION(OptimizeRegAlloc)
+  SET_OPTION(VerifyMachineCode)
+
+#define SET_BOOLEAN_OPTION(Option) Opt.Option = Option;
+
+  SET_BOOLEAN_OPTION(EarlyLiveIntervals)
+  SET_BOOLEAN_OPTION(EnableBlockPlacementStats)
+  SET_BOOLEAN_OPTION(EnableImplicitNullChecks)
+  SET_BOOLEAN_OPTION(EnableMachineOutliner)
+  SET_BOOLEAN_OPTION(MISchedPostRA)
+  SET_BOOLEAN_OPTION(UseCFLAA)
+  SET_BOOLEAN_OPTION(DisableMergeICmps)
+  SET_BOOLEAN_OPTION(DisableLSR)
+  SET_BOOLEAN_OPTION(DisableConstantHoisting)
+  SET_BOOLEAN_OPTION(DisableCGP)
+  SET_BOOLEAN_OPTION(DisablePartialLibcallInlining)
+  SET_BOOLEAN_OPTION(PrintLSR)
+  SET_BOOLEAN_OPTION(PrintISelInput)
+  SET_BOOLEAN_OPTION(PrintGCInfo)
+
+  return Opt;
+}
+
+// FIXME: For new PM, use pass name directly in commandline seems good.
+// Translate stringfied pass name to its old commandline name
+static StringRef getPassNameFromLegacyName(StringRef Name) {
+  if (Name.empty())
+    return Name;
+
+  StringRef Found;
+
+#define FUNCTION_PASS(NAME, PASS_NAME, CONSTRUCTOR)                            \
+  if (Name == NAME)                                                            \
+    Found = #PASS_NAME;
+#define MODULE_PASS(NAME, PASS_NAME, CONSTRUCTOR)                              \
+  if (Name == NAME)                                                            \
+    Found = #PASS_NAME;
+#define MACHINE_FUNCTION_PASS(NAME, PASS_NAME, CONSTRUCTOR)                    \
+  if (Name == NAME)                                                            \
+    Found = #PASS_NAME;
+#define DUMMY_FUNCTION_PASS(NAME, PASS_NAME, CONSTRUCTOR)                      \
+  if (Name == NAME)                                                            \
+    Found = #PASS_NAME;
+#define DUMMY_MODULE_PASS(NAME, PASS_NAME, CONSTRUCTOR)                        \
+  if (Name == NAME)                                                            \
+    Found = #PASS_NAME;
+#define DUMMY_MACHINE_FUNCTION_PASS(NAME, PASS_NAME, CONSTRUCTOR)              \
+  if (Name == NAME)                                                            \
+    Found = #PASS_NAME;
+#include "llvm/CodeGen/MachinePassRegistry.def"
+
+  if (Found.empty())
+    report_fatal_error(Twine('\"') + Twine(Name) +
+                       Twine("\" pass could not be found."));
+  return Found;
+}
+
+static void registerPartialPipelineCallback(PassInstrumentationCallbacks &PIC) {
+  StringRef StartBefore;
+  StringRef StartAfter;
+  StringRef StopBefore;
+  StringRef StopAfter;
+
+  unsigned StartBeforeInstanceNum = 0;
+  unsigned StartAfterInstanceNum = 0;
+  unsigned StopBeforeInstanceNum = 0;
+  unsigned StopAfterInstanceNum = 0;
+
+  std::tie(StartBefore, StartBeforeInstanceNum) =
+      getPassNameAndInstanceNum(StartBeforeOpt);
+  std::tie(StartAfter, StartAfterInstanceNum) =
+      getPassNameAndInstanceNum(StartAfterOpt);
+  std::tie(StopBefore, StopBeforeInstanceNum) =
+      getPassNameAndInstanceNum(StopBeforeOpt);
+  std::tie(StopAfter, StopAfterInstanceNum) =
+      getPassNameAndInstanceNum(StopAfterOpt);
+
+  if (StartBefore.empty() && StartAfter.empty() && StopBefore.empty() &&
+      StopAfter.empty())
+    return;
+
+  StartBefore = getPassNameFromLegacyName(StartBefore);
+  StartAfter = getPassNameFromLegacyName(StartAfter);
+  StopBefore = getPassNameFromLegacyName(StopBefore);
+  StopAfter = getPassNameFromLegacyName(StopAfter);
+  if (!StartBefore.empty() && !StartAfter.empty())
+    report_fatal_error(Twine(StartBeforeOptName) + Twine(" and ") +
+                       Twine(StartAfterOptName) + Twine(" specified!"));
+  if (!StopBefore.empty() && !StopAfter.empty())
+    report_fatal_error(Twine(StopBeforeOptName) + Twine(" and ") +
+                       Twine(StopAfterOptName) + Twine(" specified!"));
+
+  unsigned StartBeforeCount = 0;
+  unsigned StartAfterCount = 0;
+  unsigned StopBeforeCount = 0;
+  unsigned StopAfterCount = 0;
+
+  const bool EnableAtStart = StartBefore.empty() && StartAfter.empty();
+  auto EnableCurrent = std::make_shared<bool>(EnableAtStart);
+  auto EnableNext = std::make_shared<Optional<bool>>();
+  PIC.registerBeforePassCallback([=](StringRef P, Any) mutable {
+    // FIXME: Make adaptor/wrapper passes unskippable (This is important
+    //        when EnableAtStart is false since we only want to disable real
+    //        passes. Disabling adaptor pass causes all passes in the
+    //        containing pass manager being skipped).
+    // TODO: Support MSVC/GCC
+    // FIXME: the alternative is to pursue D82344
+    // if (P == "ModuleToFunctionPassAdaptor<llvm::PassManager<llvm::Function>
+    // >")
+    //   return true;
+    // if (P == "PassManager<llvm::Function>")
+    //   return true;
+
+    // Implement -start-after/-stop-after
+    if (*EnableNext) {
+      *EnableCurrent = **EnableNext;
+      EnableNext->reset();
+    }
+
+    // Using PIC.registerAfterPassCallback won't work because if this callback
+    // returns false, AfterPassCallback is also skipped.
+    if (!StartAfter.empty() && P.contains(StartAfter) &&
+        StartAfterCount++ == StartAfterInstanceNum) {
+      assert(!*EnableNext && "Error: assign to EnableNext more than once");
+      *EnableNext = true;
+    }
+    if (!StopAfter.empty() && P.contains(StopAfter) &&
+        StopAfterCount++ == StopAfterInstanceNum) {
+      assert(!*EnableNext && "Error: assign to EnableNext more than once");
+      *EnableNext = false;
+    }
+
+    if (!StartBefore.empty() && P.contains(StartBefore) &&
+        StartBeforeCount++ == StartBeforeInstanceNum)
+      *EnableCurrent = true;
+    if (!StopBefore.empty() && P.contains(StopBefore) &&
+        StopBeforeCount++ == StopBeforeInstanceNum)
+      *EnableCurrent = false;
+    return *EnableCurrent;
+  });
+}
+
+void llvm::registerCodeGenCallback(PassInstrumentationCallbacks &PIC) {
+
+  // Register a callback for disabling passes.
+  PIC.registerBeforePassCallback([](StringRef P, Any) {
+
+#define DISABLE_PASS(Option, Name)                                             \
+  if (Option && P.contains(#Name))                                             \
+    return false;
+    DISABLE_PASS(DisableBlockPlacement, MachineBlockPlacementPass)
+    DISABLE_PASS(DisableBranchFold, BranchFolderPass)
+    DISABLE_PASS(DisableCopyProp, MachineCopyPropagationPass)
+    DISABLE_PASS(DisableEarlyIfConversion, EarlyIfConverterPass)
+    DISABLE_PASS(DisableEarlyTailDup, EarlyTailDuplicatePass)
+    DISABLE_PASS(DisableMachineCSE, MachineCSEPass)
+    DISABLE_PASS(DisableMachineDCE, DeadMachineInstructionElimPass)
+    DISABLE_PASS(DisableMachineLICM, EarlyMachineLICMPass)
+    DISABLE_PASS(DisableMachineSink, MachineSinkingPass)
+    DISABLE_PASS(DisablePostRAMachineLICM, MachineLICMPass)
+    DISABLE_PASS(DisablePostRAMachineSink, PostRAMachineSinkingPass)
+    DISABLE_PASS(DisablePostRASched, PostRASchedulerPass)
+    DISABLE_PASS(DisableSSC, StackSlotColoringPass)
+    DISABLE_PASS(DisableTailDuplicate, TailDuplicatePass)
+
+    return true;
+  });
+
+  registerPartialPipelineCallback(PIC);
 }
 
 // Out of line constructor provides default values for pass options and
@@ -1028,10 +1211,11 @@ void TargetPassConfig::addMachinePasses() {
   addPass(&LiveDebugValuesID, false);
 
   if (TM->Options.EnableMachineOutliner && getOptLevel() != CodeGenOpt::None &&
-      EnableMachineOutliner != NeverOutline) {
-    bool RunOnAllFunctions = (EnableMachineOutliner == AlwaysOutline);
-    bool AddOutliner = RunOnAllFunctions ||
-                       TM->Options.SupportsDefaultOutlining;
+      EnableMachineOutliner != RunOutliner::NeverOutline) {
+    bool RunOnAllFunctions =
+        (EnableMachineOutliner == RunOutliner::AlwaysOutline);
+    bool AddOutliner =
+        RunOnAllFunctions || TM->Options.SupportsDefaultOutlining;
     if (AddOutliner)
       addPass(createMachineOutlinerPass(RunOnAllFunctions));
   }

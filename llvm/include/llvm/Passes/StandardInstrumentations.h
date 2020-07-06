@@ -66,6 +66,9 @@ public:
 
   TimePassesHandler &getTimePasses() { return TimePasses; }
 };
+
+void registerCodeGenCallback(PassInstrumentationCallbacks &PIC);
+
 } // namespace llvm
 
 #endif
