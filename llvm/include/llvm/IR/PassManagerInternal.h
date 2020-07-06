@@ -31,6 +31,20 @@ class PreservedAnalyses;
 /// Implementation details of the pass manager interfaces.
 namespace detail {
 
+template <typename C> struct PassHasSkippableMethod {
+private:
+  template <typename T>
+  static constexpr auto check(T *) ->
+      typename std::is_same<decltype(T::isSkippable()), bool>::type;
+
+  template <typename> static constexpr std::false_type check(...);
+
+  typedef decltype(check<C>(0)) type;
+
+public:
+  static constexpr bool value = type::value;
+};
+
 /// Template for the abstract base class used to dispatch
 /// polymorphically over pass objects.
 template <typename IRUnitT, typename AnalysisManagerT, typename... ExtraArgTs>
@@ -48,6 +62,12 @@ struct PassConcept {
 
   /// Polymorphic method to access the name of a pass.
   virtual StringRef name() const = 0;
+
+  /// Polymorphic method to to let a pass optionally exempted from skipping by
+  /// PassInstrumentation.
+  /// To opt-in, pass should implement `static bool isSkippable()`. It's no-op
+  /// to have `isSkippable` always return true since that is the default.
+  virtual bool isSkippable() const = 0;
 };
 
 /// A template wrapper used to implement the polymorphic API.
@@ -80,6 +100,19 @@ struct PassModel : PassConcept<IRUnitT, AnalysisManagerT, ExtraArgTs...> {
   }
 
   StringRef name() const override { return PassT::name(); }
+
+  template <typename T>
+  static std::enable_if_t<PassHasSkippableMethod<T>::value, bool>
+  PassIsSkippable() {
+    return T::isSkippable();
+  }
+  template <typename T>
+  static std::enable_if_t<!PassHasSkippableMethod<T>::value, bool>
+  PassIsSkippable() {
+    return true;
+  }
+
+  bool isSkippable() const override { return PassIsSkippable<PassT>(); }
 
   PassT Pass;
 };

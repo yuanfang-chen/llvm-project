@@ -366,6 +366,10 @@ public:
     return PA;
   }
 
+  static bool isSkippable() {
+    return !std::is_base_of<LoopPassT, LoopPassManager>::value;
+  }
+
 private:
   LoopPassT Pass;
 

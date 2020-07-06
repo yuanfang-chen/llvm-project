@@ -355,6 +355,10 @@ public:
   /// Runs the CGSCC pass across every SCC in the module.
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 
+  static bool isSkippable() {
+    return !std::is_base_of<CGSCCPassT, CGSCCPassManager>::value;
+  }
+
 private:
   CGSCCPassT Pass;
 };
@@ -541,6 +545,10 @@ public:
     PA.preserve<LazyCallGraphAnalysis>();
 
     return PA;
+  }
+
+  static bool isSkippable() {
+    return !std::is_base_of<FunctionPassT, FunctionPassManager>::value;
   }
 
 private:

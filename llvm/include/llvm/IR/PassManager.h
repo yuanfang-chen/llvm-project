@@ -559,7 +559,7 @@ public:
     Passes.emplace_back(new PassModelT(std::move(Pass)));
   }
 
-private:
+  static bool isSkippable() { return false; }
   using PassConceptT =
       detail::PassConcept<IRUnitT, AnalysisManagerT, ExtraArgTs...>;
 
@@ -1258,6 +1258,10 @@ public:
     PA.preserveSet<AllAnalysesOn<Function>>();
     PA.preserve<FunctionAnalysisManagerModuleProxy>();
     return PA;
+  }
+
+  static bool isSkippable() {
+    return !std::is_base_of<FunctionPassT, FunctionPassManager>::value;
   }
 
 private:

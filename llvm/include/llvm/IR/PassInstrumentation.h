@@ -124,10 +124,40 @@ private:
       AfterAnalysisCallbacks;
 };
 
+// Template argument PassT of PassInstrumentation::runBeforePass could be two
+// kinds: (1) a regular pass inherited from PassInfoMixin (happen when creating
+// a adaptor pass for a regular pass); (2) a type-erased PassConcept created
+// from (1). Here we want to make case (1) skippable unconditionally since they
+// are regular passes. We call PassConcept::isSkippable to decide for case (2).
+template <typename C> struct MaybeSkippablePass {
+private:
+  template <typename T>
+  static constexpr auto check(T *) ->
+      typename std::is_same<decltype(std::declval<T>().isSkippable()),
+                            bool>::type;
+  template <typename> static constexpr std::false_type check(...);
+
+  typedef decltype(check<C>(0)) type;
+
+public:
+  static constexpr bool value = type::value;
+};
+
 /// This class provides instrumentation entry points for the Pass Manager,
 /// doing calls to callbacks registered in PassInstrumentationCallbacks.
 class PassInstrumentation {
   PassInstrumentationCallbacks *Callbacks;
+
+  template <typename PassT>
+  static std::enable_if_t<MaybeSkippablePass<PassT>::value, bool>
+  isSkippable(const PassT &Pass) {
+    return Pass.isSkippable();
+  }
+  template <typename PassT>
+  static std::enable_if_t<!MaybeSkippablePass<PassT>::value, bool>
+  isSkippable(const PassT &Pass) {
+    return true;
+  }
 
 public:
   /// Callbacks object is not owned by PassInstrumentation, its life-time
@@ -148,6 +178,7 @@ public:
     bool ShouldRun = true;
     for (auto &C : Callbacks->BeforePassCallbacks)
       ShouldRun &= C(Pass.name(), llvm::Any(&IR));
+    ShouldRun = ShouldRun || !isSkippable(Pass);
     return ShouldRun;
   }
 
