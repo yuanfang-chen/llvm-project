@@ -17,6 +17,8 @@
 #include "llvm/Analysis/CallGraphSCCPass.h"
 #include "llvm/Analysis/LazyCallGraph.h"
 #include "llvm/Analysis/LoopInfo.h"
+#include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MIRPrinter.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/Module.h"
@@ -41,6 +43,15 @@ Optional<std::pair<const Module *, std::string>> unwrapModule(Any IR) {
       return None;
     const Module *M = F->getParent();
     return std::make_pair(M, formatv(" (function: {0})", F->getName()).str());
+  }
+
+  if (any_isa<const MachineFunction *>(IR)) {
+    const MachineFunction *MF = any_cast<const MachineFunction *>(IR);
+    if (!llvm::isFunctionInPrintList(MF->getName()))
+      return None;
+    const Module *M = MF->getFunction().getParent();
+    return std::make_pair(
+        M, formatv(" (machine function: {0})", MF->getName()).str());
   }
 
   if (any_isa<const LazyCallGraph::SCC *>(IR)) {
@@ -109,6 +120,13 @@ void printIR(const Loop *L, StringRef Banner) {
   llvm::printLoop(const_cast<Loop &>(*L), dbgs(), std::string(Banner));
 }
 
+void printIR(const MachineFunction *MF, StringRef Banner,
+             StringRef Extra = StringRef()) {
+  if (!llvm::isFunctionInPrintList(MF->getName()))
+    return;
+  dbgs() << Banner << Extra << "\n";
+  printMIR(dbgs(), *MF);
+}
 /// Generic IR-printing helper that unpacks a pointer to IRUnit wrapped into
 /// llvm::Any and does actual print job.
 void unwrapAndPrint(Any IR, StringRef Banner, bool ForceModule = false) {
@@ -146,6 +164,14 @@ void unwrapAndPrint(Any IR, StringRef Banner, bool ForceModule = false) {
     printIR(L, Banner);
     return;
   }
+
+  if (any_isa<const MachineFunction *>(IR)) {
+    const MachineFunction *MF = any_cast<const MachineFunction *>(IR);
+    assert(MF && "machine function should be valid for printing");
+    printIR(MF, Banner);
+    return;
+  }
+
   llvm_unreachable("Unknown wrapped IR type");
 }
 
