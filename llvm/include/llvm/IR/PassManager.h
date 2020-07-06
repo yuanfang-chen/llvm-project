@@ -560,6 +560,8 @@ public:
   }
 
   static bool isSkippable() { return false; }
+
+protected:
   using PassConceptT =
       detail::PassConcept<IRUnitT, AnalysisManagerT, ExtraArgTs...>;
 
