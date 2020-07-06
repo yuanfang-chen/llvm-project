@@ -38,7 +38,18 @@ extern template class DominatorTreeBase<MachineBasicBlock, false>; // DomTree
 extern template class DominatorTreeBase<MachineBasicBlock, true>; // PostDomTree
 
 using MachineDomTreeNode = DomTreeNodeBase<MachineBasicBlock>;
+// TODO: this is MachineFunctionAnalysis Pass?
+// class DominatorTreeAnalysis : public AnalysisInfoMixin<DominatorTreeAnalysis> {
+//   friend AnalysisInfoMixin<DominatorTreeAnalysis>;
+//   static AnalysisKey Key;
 
+// public:
+//   /// Provide the result typedef for this analysis pass.
+//   using Result = DominatorTree;
+
+//   /// Run the analysis pass over a function and produce a dominator tree.
+//   DominatorTree run(Function &F, FunctionAnalysisManager &);
+// };
 //===-------------------------------------
 /// DominatorTree Class - Concrete subclass of DominatorTreeBase that is used to
 /// compute a normal dominator tree.

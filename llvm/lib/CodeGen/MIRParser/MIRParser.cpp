@@ -288,6 +288,8 @@ bool MIRParserImpl::parseMachineFunction(Module &M, MachineModuleInfo &MMI) {
   yaml::MachineFunction YamlMF;
   yaml::EmptyContext Ctx;
 
+  // TODO: Can uses like this be removed so to remove TM of MMI?
+  // https://github.com/llvm/llvm-project/commit/bc6d07ca46d7e77f3602281a0d0b89ac818ef40d
   const LLVMTargetMachine &TM = MMI.getTarget();
   YamlMF.MachineFuncInfo = std::unique_ptr<yaml::MachineFunctionInfo>(
       TM.createDefaultFuncInfoYAML());
