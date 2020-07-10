@@ -376,6 +376,27 @@ public:
     return make_error<StringError>("buildCodeGenPipeline is not overriden",
                                    inconvertibleErrorCode());
   }
+
+  virtual Expected<ModulePassManager>
+  parseIRPipeline(StringRef PipelineText, CGPassBuilderOption Opts,
+                  MachineFunctionAnalysisManager &MFAM,
+                  PassInstrumentationCallbacks *PIC) {
+    return make_error<StringError>("parseIRPipeline is not overriden",
+                                   inconvertibleErrorCode());
+  }
+
+  virtual Expected<MachineFunctionPassManager>
+  parseMIRPipeline(StringRef PipelineText, CGPassBuilderOption Opts,
+                   MachineFunctionAnalysisManager &MFAM,
+                   PassInstrumentationCallbacks *PIC) {
+    return make_error<StringError>("parseMIRPipeline is not overriden",
+                                   inconvertibleErrorCode());
+  }
+
+  virtual bool isMachinePass(StringRef PassName) const {
+    llvm_unreachable("isMachinePass is not overriden");
+  }
+
   /// Add passes to the specified pass manager to get machine code emitted with
   /// the MCJIT. This method returns true if machine code is not supported. It
   /// fills the MCContext Ctx pointer which can be used to build custom

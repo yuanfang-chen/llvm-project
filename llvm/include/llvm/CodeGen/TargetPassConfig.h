@@ -161,8 +161,9 @@ public:
   static bool hasLimitedCodeGenPipeline();
 
   /// Returns true if none of the `-stop-before` and `-stop-after` options is
-  /// set.
-  static bool willCompleteCodeGenPipeline();
+  /// set. If one of them is set and `StopOpt` is not null, return the specified
+  /// pass in `StopOpt`.
+  static bool willCompleteCodeGenPipeline(std::string *StopOpt = nullptr);
 
   /// If hasLimitedCodeGenPipeline is true, this method
   /// returns a string with the name of the options, separated

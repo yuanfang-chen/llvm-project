@@ -645,8 +645,15 @@ TargetPassConfig::TargetPassConfig()
                      "triple set?");
 }
 
-bool TargetPassConfig::willCompleteCodeGenPipeline() {
-  return StopBeforeOpt.empty() && StopAfterOpt.empty();
+bool TargetPassConfig::willCompleteCodeGenPipeline(std::string *StopOpt) {
+  bool Ret = StopBeforeOpt.empty() && StopAfterOpt.empty();
+  if (!Ret && StopOpt) {
+    if (!StopBeforeOpt.empty())
+      *StopOpt = StopBeforeOpt;
+    if (!StopAfterOpt.empty())
+      *StopOpt = StopAfterOpt;
+  }
+  return Ret;
 }
 
 bool TargetPassConfig::hasLimitedCodeGenPipeline() {
