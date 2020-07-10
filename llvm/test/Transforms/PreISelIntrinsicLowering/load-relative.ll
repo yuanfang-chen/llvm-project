@@ -1,4 +1,5 @@
 ; RUN: opt -pre-isel-intrinsic-lowering -S -o - %s | FileCheck %s
+; RUN: llc -enable-new-pm -passes='pre-isel-intrinsic-lowering' < %s | FileCheck %s
 
 ; CHECK: define i8* @foo32(i8* [[P:%.*]], i32 [[O:%.*]])
 define i8* @foo32(i8* %p, i32 %o) {

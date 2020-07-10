@@ -1,4 +1,5 @@
 ; RUN: opt -pre-isel-intrinsic-lowering -S -o - %s | FileCheck %s
+; RUN: llc -enable-new-pm -passes='pre-isel-intrinsic-lowering' < %s | FileCheck %s
 
 ; Make sure calls to the objc intrinsics are translated to calls in to the
 ; runtime
