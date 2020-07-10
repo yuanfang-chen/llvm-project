@@ -49,6 +49,24 @@ public:
   // Set up the pass pipeline.
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
 
+  Expected<std::pair<ModulePassManager, MachineFunctionPassManager>>
+  buildCodeGenPipeline(raw_pwrite_stream &, raw_pwrite_stream *,
+                       CodeGenFileType, CGPassBuilderOption,
+                       MachineFunctionAnalysisManager &,
+                       PassInstrumentationCallbacks *) override;
+
+  Expected<ModulePassManager>
+  parseIRPipeline(StringRef, CGPassBuilderOption,
+                  MachineFunctionAnalysisManager &,
+                  PassInstrumentationCallbacks *) override;
+
+  Expected<MachineFunctionPassManager>
+  parseMIRPipeline(StringRef, CGPassBuilderOption,
+                   MachineFunctionAnalysisManager &,
+                   PassInstrumentationCallbacks *) override;
+
+  bool isMachinePass(StringRef Name) const override;
+
   TargetLoweringObjectFile *getObjFileLowering() const override {
     return TLOF.get();
   }

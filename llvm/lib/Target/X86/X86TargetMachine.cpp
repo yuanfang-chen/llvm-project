@@ -26,6 +26,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/CodeGen/CodeGenPassBuilder.h"
 #include "llvm/CodeGen/ExecutionDomainFix.h"
 #include "llvm/CodeGen/GlobalISel/CallLowering.h"
 #include "llvm/CodeGen/GlobalISel/IRTranslator.h"
@@ -554,4 +555,282 @@ void X86PassConfig::addPreEmitPass2() {
 
 std::unique_ptr<CSEConfigBase> X86PassConfig::getCSEConfig() const {
   return getStandardCSEConfigForOpt(TM->getOptLevel());
+}
+
+namespace {
+
+#define DUMMY_FUNCTION_PASS(NAME, PASS_NAME, CONSTRUCTOR)                      \
+  struct PASS_NAME : public PassInfoMixin<PASS_NAME> {                         \
+    template <typename... Ts> PASS_NAME(Ts &&...) {}                           \
+    PreservedAnalyses run(Function &, FunctionAnalysisManager &) {             \
+      return PreservedAnalyses::all();                                         \
+    }                                                                          \
+  };
+#define DUMMY_MACHINE_FUNCTION_PASS(NAME, PASS_NAME, CONSTRUCTOR)              \
+  struct PASS_NAME : public PassInfoMixin<PASS_NAME> {                         \
+    template <typename... Ts> PASS_NAME(Ts &&...) {}                           \
+    PreservedAnalyses run(MachineFunction &,                                   \
+                          MachineFunctionAnalysisManager &) {                  \
+      return PreservedAnalyses::all();                                         \
+    }                                                                          \
+    static AnalysisKey Key;                                                    \
+  };                                                                           \
+  AnalysisKey PASS_NAME::Key;
+#include "X86PassRegistry.def"
+
+/// X86 Code Generator Pass Configuration Options.
+class X86CodeGenPassBuilder : public CodeGenPassBuilder<X86CodeGenPassBuilder> {
+public:
+  X86CodeGenPassBuilder(X86TargetMachine &TM, CGPassBuilderOption Opt,
+                        PassInstrumentationCallbacks *PIC)
+      : CodeGenPassBuilder<X86CodeGenPassBuilder>(TM, Opt, PIC) {
+    // Target-specific `CGPassBuilderOption` could be overridden here.
+  }
+
+  Error addTargetPass(AddIRPass &, StringRef) const;
+  Error addTargetPass(AddMachinePass &, StringRef) const;
+  void addIRPasses(AddIRPass &) const;
+  void addPreISel(AddIRPass &) const;
+  Error addInstSelector(AddMachinePass &) const;
+  Error addIRTranslator(AddMachinePass &) const;
+  Error addLegalizeMachineIR(AddMachinePass &) const;
+  Error addRegBankSelect(AddMachinePass &) const;
+  Error addGlobalInstructionSelect(AddMachinePass &) const;
+  void addILPOpts(AddMachinePass &) const;
+  void addMachineSSAOptimization(AddMachinePass &) const;
+  void addPreRegAlloc(AddMachinePass &) const;
+  void addPostRegAlloc(AddMachinePass &) const;
+  void addPreEmitPass(AddMachinePass &) const;
+  void addPreEmitPass2(AddMachinePass &) const;
+  void addPreSched2(AddMachinePass &) const;
+  void addAsmPrinter(AddMachinePass &, CreateMCStreamer) const;
+};
+
+} // namespace
+
+Error X86CodeGenPassBuilder::addTargetPass(AddIRPass &addPass,
+                                           StringRef Name) const {
+#define FUNCTION_PASS(NAME, PASS_NAME, CONSTRUCTOR)                            \
+  if (Name == NAME) {                                                          \
+    addPass(PASS_NAME CONSTRUCTOR);                                            \
+    return Error::success();                                                   \
+  }
+#define DUMMY_FUNCTION_PASS(NAME, PASS_NAME, CONSTRUCTOR)                      \
+  if (Name == NAME) {                                                          \
+    addPass(PASS_NAME CONSTRUCTOR);                                            \
+    return Error::success();                                                   \
+  }
+#include "X86PassRegistry.def"
+
+  return Error::success();
+}
+
+Error X86CodeGenPassBuilder::addTargetPass(AddMachinePass &addPass,
+                                           StringRef Name) const {
+#define MACHINE_FUNCTION_PASS(NAME, PASS_NAME, CONSTRUCTOR)                    \
+  if (Name == NAME) {                                                          \
+    addPass(PASS_NAME CONSTRUCTOR);                                            \
+    return Error::success();                                                   \
+  }
+#define DUMMY_MACHINE_FUNCTION_PASS(NAME, PASS_NAME, CONSTRUCTOR)              \
+  if (Name == NAME) {                                                          \
+    addPass(PASS_NAME CONSTRUCTOR);                                            \
+    return Error::success();                                                   \
+  }
+#include "X86PassRegistry.def"
+
+  return Error::success();
+}
+
+void X86CodeGenPassBuilder::addIRPasses(AddIRPass &addPass) const {
+  addPass(AtomicExpandPass());
+
+  CodeGenPassBuilder::addIRPasses(addPass);
+
+  if (TM.getOptLevel() != CodeGenOpt::None)
+    addPass(InterleavedAccessPass());
+
+  // Add passes that handle indirect branch removal and insertion of a retpoline
+  // thunk. These will be a no-op unless a function subtarget has the retpoline
+  // feature enabled.
+  addPass(IndirectBrExpandPass());
+
+  // Add Control Flow Guard checks.
+  const Triple &TT = TM.getTargetTriple();
+  if (TT.isOSWindows()) {
+    if (TT.getArch() == Triple::x86_64) {
+      addPass(CFGuardDispatchPass());
+    } else {
+      addPass(CFGuardCheckPass());
+    }
+  }
+}
+
+Error X86CodeGenPassBuilder::addInstSelector(AddMachinePass &addPass) const {
+  // Install an instruction selector.
+  addPass(X86ISelDagPass(getTM<X86TargetMachine>(), getOptLevel()));
+
+  // For ELF, cleanup any local-dynamic TLS accesses.
+  if (TM.getTargetTriple().isOSBinFormatELF() &&
+      TM.getOptLevel() != CodeGenOpt::None)
+    addPass(CleanupLocalDynamicTLSPass());
+
+  addPass(X86GlobalBaseRegPass());
+  return Error::success();
+}
+
+Error X86CodeGenPassBuilder::addIRTranslator(AddMachinePass &addPass) const {
+  addPass(IRTranslatorPass());
+  return Error::success();
+}
+
+Error X86CodeGenPassBuilder::addLegalizeMachineIR(
+    AddMachinePass &addPass) const {
+  addPass(LegalizerPass());
+  return Error::success();
+}
+
+Error X86CodeGenPassBuilder::addRegBankSelect(AddMachinePass &addPass) const {
+  addPass(RegBankSelectPass());
+  return Error::success();
+}
+
+Error X86CodeGenPassBuilder::addGlobalInstructionSelect(
+    AddMachinePass &addPass) const {
+  addPass(InstructionSelectPass());
+  return Error::success();
+}
+
+void X86CodeGenPassBuilder::addILPOpts(AddMachinePass &addPass) const {
+  if (EnableCondBrFoldingPass)
+    addPass(X86CondBrFoldingDummyPass()); // TODO
+  addPass(EarlyIfConverterPass());
+  if (EnableMachineCombinerPass)
+    addPass(MachineCombinerPass());
+  addPass(X86CmovConverterDummyPass()); // TODO
+}
+
+void X86CodeGenPassBuilder::addPreISel(AddIRPass &addPass) const {
+  // Only add this pass for 32-bit x86 Windows.
+  const Triple &TT = TM.getTargetTriple();
+  if (TT.isOSWindows() && TT.getArch() == Triple::x86)
+    addPass(X86WinEHStatePass());
+}
+
+void X86CodeGenPassBuilder::addPreRegAlloc(AddMachinePass &addPass) const {
+  if (TM.getOptLevel() != CodeGenOpt::None) {
+    addPass(LiveRangeShrinkPass());
+    addPass(X86FixupSetCCPass());
+    addPass(X86OptimizeLEAsPass());
+    addPass(X86CallFrameOptimizationPass());
+    addPass(X86AvoidStoreForwardingBlocksPass());
+  }
+
+  addPass(X86SpeculativeLoadHardeningPass());
+  addPass(X86FlagsCopyLoweringDummyPass()); // TODO: port to NPM and rename
+  addPass(X86WinAllocaExpanderPass());
+}
+
+void X86CodeGenPassBuilder::addMachineSSAOptimization(
+    AddMachinePass &addPass) const {
+  addPass(X86DomainReassignmentPass());
+  CodeGenPassBuilder::addMachineSSAOptimization(addPass);
+}
+
+void X86CodeGenPassBuilder::addPostRegAlloc(AddMachinePass &addPass) const {
+  addPass(X86FloatingPointStackifierPass());
+}
+
+void X86CodeGenPassBuilder::addPreSched2(AddMachinePass &addPass) const {
+  addPass(X86ExpandPseudoPass());
+}
+
+void X86CodeGenPassBuilder::addPreEmitPass(AddMachinePass &addPass) const {
+  if (getOptLevel() != CodeGenOpt::None) {
+    addPass(X86ExecutionDomainFixPass());
+    addPass(BreakFalseDepsPass());
+  }
+
+  addPass(X86IndirectBranchTrackingPass());
+
+  addPass(X86IssueVZeroUpperPass());
+
+  if (getOptLevel() != CodeGenOpt::None) {
+    addPass(X86FixupBWInstsPass());
+    addPass(X86PadShortFunctionsPass());
+    addPass(X86FixupLEAsPass());
+  }
+  addPass(X86EvexToVexInstsPass());
+  addPass(X86DiscriminateMemOpsPass());
+  addPass(X86InsertPrefetchPass());
+  addPass(X86InsertX87waitPass());
+}
+
+void X86CodeGenPassBuilder::addPreEmitPass2(AddMachinePass &addPass) const {
+  const Triple &TT = TM.getTargetTriple();
+  const MCAsmInfo *MAI = TM.getMCAsmInfo();
+
+  addPass(X86RetpolineThunksPass());
+
+  // Insert extra int3 instructions after trailing call instructions to avoid
+  // issues in the unwinder.
+  if (TT.isOSWindows() && TT.getArch() == Triple::x86_64)
+    addPass(X86AvoidTrailingCallPass());
+
+  // Verify basic block incoming and outgoing cfa offset and register values and
+  // correct CFA calculation rule where needed by inserting appropriate CFI
+  // instructions.
+  if (!TT.isOSDarwin() &&
+      (!TT.isOSWindows() ||
+       MAI->getExceptionHandlingType() == ExceptionHandling::DwarfCFI))
+    addPass(CFIInstrInserterPass());
+  // Identify valid longjmp targets for Windows Control Flow Guard.
+  if (TT.isOSWindows())
+    addPass(CFGuardLongjmpPass());
+}
+
+void X86CodeGenPassBuilder::addAsmPrinter(AddMachinePass &addPass,
+                                          CreateMCStreamer callback) const {
+  addPass(X86AsmPrinterPass(callback));
+}
+
+Expected<std::pair<ModulePassManager, MachineFunctionPassManager>>
+X86TargetMachine::buildCodeGenPipeline(raw_pwrite_stream &Out,
+                                       raw_pwrite_stream *DwoOut,
+                                       CodeGenFileType FileType,
+                                       CGPassBuilderOption Opts,
+                                       MachineFunctionAnalysisManager &MFAM,
+                                       PassInstrumentationCallbacks *PIC) {
+  X86CodeGenPassBuilder X86CGPB{*this, Opts, PIC};
+  X86CGPB.registerAnalyses(MFAM);
+  return X86CGPB.buildPipeline(Out, DwoOut, FileType);
+}
+
+Expected<ModulePassManager> X86TargetMachine::parseIRPipeline(
+    StringRef PipelineText, CGPassBuilderOption Opts,
+    MachineFunctionAnalysisManager &MFAM, PassInstrumentationCallbacks *PIC) {
+  X86CodeGenPassBuilder X86CGPB{*this, Opts, PIC};
+  X86CGPB.registerAnalyses(MFAM);
+  return X86CGPB.parseIRPipeline(PipelineText);
+}
+
+Expected<MachineFunctionPassManager> X86TargetMachine::parseMIRPipeline(
+    StringRef PipelineText, CGPassBuilderOption Opts,
+    MachineFunctionAnalysisManager &MFAM, PassInstrumentationCallbacks *PIC) {
+  X86CodeGenPassBuilder X86CGPB{*this, Opts, PIC};
+  X86CGPB.registerAnalyses(MFAM);
+  return X86CGPB.parseMIRPipeline(PipelineText);
+}
+
+bool X86TargetMachine::isMachinePass(StringRef Name) const {
+#define MACHINE_FUNCTION_PASS(NAME, PASS_NAME, CONSTRUCTOR)                    \
+  if (Name == NAME)                                                            \
+    return true;
+#define DUMMY_MACHINE_FUNCTION_PASS(NAME, PASS_NAME, CONSTRUCTOR)              \
+  if (Name == NAME)                                                            \
+    return true;
+#include "X86PassRegistry.def"
+#include "llvm/CodeGen/MachinePassRegistry.def"
+
+  return false;
 }
