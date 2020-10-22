@@ -51,7 +51,7 @@ static inline Type *checkType(Type *Ty) {
 }
 
 Value::Value(Type *ty, unsigned scid)
-    : VTy(checkType(ty)), UseList(nullptr), SubclassID(scid), HasValueHandle(0),
+    : VTy(checkType(ty)), UseList(), SubclassID(scid), HasValueHandle(0),
       SubclassOptionalData(0), SubclassData(0), NumUserOperands(0),
       IsUsedByMD(false), HasName(false), HasMetadata(false) {
   static_assert(ConstantFirstVal == 0, "!(SubclassID < ConstantFirstVal)");

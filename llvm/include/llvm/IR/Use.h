@@ -34,6 +34,36 @@ namespace llvm {
 template <typename> struct simplify_type;
 class User;
 class Value;
+class Use;
+
+#if 1
+class UsePtr {
+  PointerIntPair<Use *, 1, bool> UsePI;
+public:
+  friend class Use;
+  operator Use*() { return UsePI.getPointer(); }
+  operator Use*() const { return UsePI.getPointer(); }
+
+  // operator Use*() { return *UsePI.getAddrOfPointer(); }
+  // operator Use*() const { return *UsePI.getAddrOfPointer(); }
+
+  Use * operator=(Use *U) {
+    // UsePI.setFromOpaqueValue(U);
+    UsePI.setPointer(U);
+    return U;
+  }
+
+  Use **getAddrOfPointer() { return UsePI.getAddrOfPointer(); }
+
+  // Use *getAsPointer() { return *UsePI.getAddrOfPointer(); }
+  // //const Use *getAsPointer() const { return *UsePI.getAddrOfPointer(); }
+  // Use *getAsPointer() const { return *UsePI.getAddrOfPointer(); }
+
+  // Use *operator->() { return *UsePI.getAddrOfPointer(); }
+  Use *operator->() const { return UsePI.getPointer(); }
+
+};
+#endif
 
 /// A Use represents the edge between a Value definition and its users.
 ///
@@ -81,9 +111,14 @@ public:
   const Value *operator->() const { return Val; }
 
   Use *getNext() const { return Next; }
+  UsePtr getNext2() const { return Next; }
+  // void setNext(Use *U) { Next.setAsPointer(U); }
 
   /// Return the operand # of this use in its User.
   unsigned getOperandNo() const;
+
+  void setUserExecutableInst() { Next.UsePI.setInt(1); }
+  bool isUserExecutableInst() const { return Next.UsePI.getInt(); }
 
   /// Destroys Use operands when the number of operands of
   /// a User changes.
@@ -92,11 +127,11 @@ public:
 private:
 
   Value *Val = nullptr;
-  Use *Next = nullptr;
-  Use **Prev = nullptr;
+  UsePtr Next;
+  UsePtr *Prev = nullptr;
   User *Parent = nullptr;
 
-  void addToList(Use **List) {
+  void addToList(UsePtr *List) {
     Next = *List;
     if (Next)
       Next->Prev = &Next;

@@ -74,7 +74,7 @@ using ValueName = StringMapEntry<Value *>;
 /// llvm/IR/ValueHandle.h for details.
 class Value {
   Type *VTy;
-  Use *UseList;
+  UsePtr UseList;
 
   friend class ValueAsMetadata; // Allow access to IsUsedByMD.
   friend class ValueHandleBase;
@@ -160,6 +160,52 @@ private:
       return use_iterator_impl<const UseT>(U);
     }
   };
+  // template <typename UseT> // UseT == 'Use' or 'const Use'
+  // class use_ptr_iterator_impl
+  //     : public std::iterator<std::forward_iterator_tag, UseT> {
+  //   friend class Value;
+
+  //   UseT U;
+  //   // Use *U2 = nullptr;
+  //   // int val = 0;
+
+  //   explicit use_ptr_iterator_impl(UseT u) : U(u) {
+  //     // operator++();
+  //     }
+
+  // public:
+  //   use_ptr_iterator_impl() : U() {}
+
+  //   bool operator==(const use_ptr_iterator_impl &x) const { return U == x.U; }
+  //   bool operator!=(const use_ptr_iterator_impl &x) const { return !operator==(x); }
+
+  //   use_ptr_iterator_impl &operator++() { // Preincrement
+  //     assert(U && "Cannot increment end iterator!");
+  //     U2 = U.getPointer();
+  //     U = U2->getNext2();
+  //     val = U.getInt();
+  //     return *this;
+  //   }
+
+  //   use_ptr_iterator_impl operator++(int) { // Postincrement
+  //     auto tmp = *this;
+  //     ++*this;
+  //     return tmp;
+  //   }
+
+  //   Use &operator*() const {
+  //     assert(U && "Cannot dereference end iterator!");
+  //     return *U.getPointer();
+  //   }
+
+  //   Use *operator->() const { return &operator*(); }
+
+  //   bool isExe() const { return val; }
+
+  //   operator use_ptr_iterator_impl<const UseT>() const {
+  //     return use_ptr_iterator_impl<const UseT>(U);
+  //   }
+  // };
 
   template <typename UserTy> // UserTy == 'User' or 'const User'
   class user_iterator_impl
@@ -812,11 +858,11 @@ private:
       }
       if (Cmp(*R, *L)) {
         *Next = R;
-        Next = &R->Next;
+        Next = R->Next.getAddrOfPointer();
         R = R->Next;
       } else {
         *Next = L;
-        Next = &L->Next;
+        Next = L->Next.getAddrOfPointer();
         L = L->Next;
       }
     }
@@ -918,7 +964,8 @@ template <class Compare> void Value::sortUseList(Compare Cmp) {
       UseList = mergeUseLists(Slots[I], UseList, Cmp);
 
   // Fix the Prev pointers.
-  for (Use *I = UseList, **Prev = &UseList; I; I = I->Next) {
+  UsePtr *Prev = &UseList;
+  for (Use *I = UseList; I; I = I->Next) {
     I->Prev = Prev;
     Prev = &I->Next;
   }

@@ -206,6 +206,11 @@ public:
   bool MarkBlockExecutable(BasicBlock *BB) {
     if (!BBExecutable.insert(BB).second)
       return false;
+
+    for (auto &I : *BB)
+      for (auto &U : I.operands())
+        U.setUserExecutableInst();
+
     LLVM_DEBUG(dbgs() << "Marking Block Executable: " << BB->getName() << '\n');
     BBWorkList.push_back(BB);  // Add the block to the work list!
     return true;
@@ -535,9 +540,19 @@ private:
           handleCallResult(*CB);
       }
     } else {
-      for (User *U : I->users())
-        if (auto *UI = dyn_cast<Instruction>(U))
-          OperandChangedState(UI);
+        for (Use &U : I->uses())
+          if (U.isUserExecutableInst())
+            // visit(dyn_cast_or_null<Instruction>(U.getUser()));
+            visit(static_cast<Instruction*>(U.getUser()));
+
+      // if (auto *II = dyn_cast<Instruction>(I)) {
+      //   for (User *U : II->users())
+      //     OperandChangedState(cast<Instruction>(U));
+      // } else {
+        // for (User *U : I->users())
+        //   if (auto *UI = dyn_cast<Instruction>(U))
+        //     OperandChangedState(UI);
+      // }
     }
 
     auto Iter = AdditionalUsers.find(I);
