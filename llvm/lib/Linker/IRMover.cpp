@@ -1405,25 +1405,6 @@ static std::string adjustInlineAsm(const std::string &InlineAsm,
   return InlineAsm;
 }
 
-static void fixupCGProfileUser(Module &DstM) {
-  MDNode *CFGProfile = cast_or_null<MDNode>(DstM.getModuleFlag("CG Profile"));
-  if (!CFGProfile)
-    return;
-
-  auto StripCast = [](MDNode *E, unsigned Idx) {
-    const MDOperand &MDO = E->getOperand(Idx);
-    auto V = cast<ValueAsMetadata>(MDO);
-    if (Value *StrippedV = V->getValue()->stripPointerCasts())
-      E->replaceOperandWith(Idx, ValueAsMetadata::get(StrippedV));
-  };
-
-  for (const auto &Edge : CFGProfile->operands()) {
-    MDNode *E = cast<MDNode>(Edge);
-    StripCast(E, 0);
-    StripCast(E, 1);
-  }
-}
-
 Error IRLinker::run() {
   // Ensure metadata materialized before value mapping.
   if (SrcM->getMaterializer())
@@ -1489,8 +1470,6 @@ Error IRLinker::run() {
       return std::move(*FoundError);
     flushRAUWWorklist();
   }
-
-  fixupCGProfileUser(DstM);
 
   // Note that we are done linking global value bodies. This prevents
   // metadata linking from creating new references.
