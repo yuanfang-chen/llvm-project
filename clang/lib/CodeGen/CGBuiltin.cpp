@@ -16752,6 +16752,23 @@ struct BuiltinAlignArgs {
     auto *One = llvm::ConstantInt::get(IntType, 1);
     Mask = CGF.Builder.CreateSub(Alignment, One, "mask");
   }
+
+  BuiltinAlignArgs(llvm::Value *SrcV, llvm::Value *Align,
+                   CodeGenFunction &CGF) {
+    Src = SrcV;
+    SrcType = Src->getType();
+    if (SrcType->isPointerTy()) {
+      IntType = IntegerType::get(
+          CGF.getLLVMContext(),
+          CGF.CGM.getDataLayout().getIndexTypeSizeInBits(SrcType));
+    } else {
+      assert(SrcType->isIntegerTy());
+      IntType = cast<llvm::IntegerType>(SrcType);
+    }
+    Alignment = Align;
+    auto *One = llvm::ConstantInt::get(IntType, 1);
+    Mask = CGF.Builder.CreateSub(Alignment, One, "mask");
+  }
 };
 } // namespace
 
@@ -16767,12 +16784,10 @@ RValue CodeGenFunction::EmitBuiltinIsAligned(const CallExpr *E) {
       llvm::Constant::getNullValue(Args.IntType), "is_aligned"));
 }
 
-/// Generate (x & ~(y-1)) to align down or ((x+(y-1)) & ~(y-1)) to align up.
-/// Note: For pointer types we can avoid ptrtoint/inttoptr pairs by using the
-/// llvm.ptrmask instrinsic (with a GEP before in the align_up case).
-/// TODO: actually use ptrmask once most optimization passes know about it.
-RValue CodeGenFunction::EmitBuiltinAlignTo(const CallExpr *E, bool AlignUp) {
-  BuiltinAlignArgs Args(E, *this);
+llvm::Value *CodeGenFunction::EmitBuiltinAlignTo(void *ArgsPtr, const Expr *E,
+                                                 bool AlignUp) {
+  assert(ArgsPtr);
+  const BuiltinAlignArgs &Args = *static_cast<BuiltinAlignArgs *>(ArgsPtr);
   llvm::Value *SrcAddr = Args.Src;
   if (Args.Src->getType()->isPointerTy())
     SrcAddr = Builder.CreatePtrToInt(Args.Src, Args.IntType, "intptr");
@@ -16811,7 +16826,23 @@ RValue CodeGenFunction::EmitBuiltinAlignTo(const CallExpr *E, bool AlignUp) {
     emitAlignmentAssumption(Result, E, E->getExprLoc(), Args.Alignment);
   }
   assert(Result->getType() == Args.SrcType);
-  return RValue::get(Result);
+  return Result;
+}
+
+/// Generate (x & ~(y-1)) to align down or ((x+(y-1)) & ~(y-1)) to align up.
+/// Note: For pointer types we can avoid ptrtoint/inttoptr pairs by using the
+/// llvm.ptrmask instrinsic (with a GEP before in the align_up case).
+/// TODO: actually use ptrmask once most optimization passes know about it.
+RValue CodeGenFunction::EmitBuiltinAlignTo(const CallExpr *E, bool AlignUp) {
+  BuiltinAlignArgs Args(E, *this);
+  return RValue::get(EmitBuiltinAlignTo(&Args, E, AlignUp));
+}
+
+llvm::Value *CodeGenFunction::EmitBuiltinAlignTo(llvm::Value *Src,
+                                                 llvm::Value *Align,
+                                                 const Expr *E, bool AlignUp) {
+  BuiltinAlignArgs Args(Src, Align, *this);
+  return EmitBuiltinAlignTo(&Args, E, AlignUp);
 }
 
 Value *CodeGenFunction::EmitWebAssemblyBuiltinExpr(unsigned BuiltinID,

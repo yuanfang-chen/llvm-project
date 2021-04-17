@@ -1885,6 +1885,8 @@ private:
   void EmitOpenCLKernelMetadata(const FunctionDecl *FD,
                                 llvm::Function *Fn);
 
+  llvm::Value *EmitBuiltinAlignTo(void *Args, const Expr *E, bool AlignUp);
+
 public:
   CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext=false);
   ~CodeGenFunction();
@@ -4013,6 +4015,8 @@ public:
   RValue EmitBuiltinIsAligned(const CallExpr *E);
   /// Emit IR for __builtin_align_up/__builtin_align_down.
   RValue EmitBuiltinAlignTo(const CallExpr *E, bool AlignUp);
+  llvm::Value *EmitBuiltinAlignTo(llvm::Value *Src, llvm::Value *Align,
+                                  const Expr *E, bool AlignUp);
 
   llvm::Function *generateBuiltinOSLogHelperFunction(
       const analyze_os_log::OSLogBufferLayout &Layout,

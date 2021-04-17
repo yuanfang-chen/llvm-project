@@ -997,23 +997,33 @@ static void updateAsyncFuncPointerContextSize(coro::Shape &Shape) {
   Shape.AsyncLowering.AsyncFuncPointer->setInitializer(NewFuncPtrStruct);
 }
 
-static void replaceFrameSize(coro::Shape &Shape) {
+static void replaceFrameSizeAndAlign(coro::Shape &Shape) {
   if (Shape.ABI == coro::ABI::Async)
     updateAsyncFuncPointerContextSize(Shape);
 
-  if (Shape.CoroSizes.empty())
-    return;
+  if (!Shape.CoroSizes.empty()) {
+    // In the same function all coro.sizes should have the same result type.
+    auto *SizeIntrin = Shape.CoroSizes.back();
+    Module *M = SizeIntrin->getModule();
+    const DataLayout &DL = M->getDataLayout();
+    auto Size = DL.getTypeAllocSize(Shape.FrameTy);
+    auto *SizeConstant = ConstantInt::get(SizeIntrin->getType(), Size);
 
-  // In the same function all coro.sizes should have the same result type.
-  auto *SizeIntrin = Shape.CoroSizes.back();
-  Module *M = SizeIntrin->getModule();
-  const DataLayout &DL = M->getDataLayout();
-  auto Size = DL.getTypeAllocSize(Shape.FrameTy);
-  auto *SizeConstant = ConstantInt::get(SizeIntrin->getType(), Size);
+    for (CoroSizeInst *CS : Shape.CoroSizes) {
+      CS->replaceAllUsesWith(SizeConstant);
+      CS->eraseFromParent();
+    }
+  }
 
-  for (CoroSizeInst *CS : Shape.CoroSizes) {
-    CS->replaceAllUsesWith(SizeConstant);
-    CS->eraseFromParent();
+  if (!Shape.CoroAligns.empty()) {
+    auto *Intrin = Shape.CoroAligns.back();
+    auto *AlignConstant =
+        ConstantInt::get(Intrin->getType(), Shape.FrameAlign.value());
+
+    for (CoroAlignInst *CS : Shape.CoroAligns) {
+      CS->replaceAllUsesWith(AlignConstant);
+      CS->eraseFromParent();
+    }
   }
 }
 
@@ -1748,7 +1758,7 @@ static coro::Shape splitCoroutine(Function &F,
 
   simplifySuspendPoints(Shape);
   buildCoroutineFrame(F, Shape);
-  replaceFrameSize(Shape);
+  replaceFrameSizeAndAlign(Shape);
 
   // If there are no suspend points, no split required, just remove
   // the allocation and deallocation blocks, they are not needed.

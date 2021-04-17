@@ -121,6 +121,10 @@ public:
                : cast<AllocaInst>(Arg->stripPointerCasts());
   }
 
+  unsigned getAlignment() const {
+    return cast<ConstantInt>(getArgOperand(AlignArg))->getZExtValue();
+  }
+
   void clearPromise() {
     Value *Arg = getArgOperand(PromiseArg);
     setArgOperand(PromiseArg,
@@ -593,6 +597,18 @@ public:
   // Methods to support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const IntrinsicInst *I) {
     return I->getIntrinsicID() == Intrinsic::coro_size;
+  }
+  static bool classof(const Value *V) {
+    return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));
+  }
+};
+
+/// This represents the llvm.coro.align instruction.
+class LLVM_LIBRARY_VISIBILITY CoroAlignInst : public IntrinsicInst {
+public:
+  // Methods to support type inquiry through isa, cast, and dyn_cast:
+  static bool classof(const IntrinsicInst *I) {
+    return I->getIntrinsicID() == Intrinsic::coro_align;
   }
   static bool classof(const Value *V) {
     return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));
