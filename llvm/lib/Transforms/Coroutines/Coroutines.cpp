@@ -272,6 +272,9 @@ void coro::Shape::buildFrom(Function &F) {
       case Intrinsic::coro_align:
         CoroAligns.push_back(cast<CoroAlignInst>(II));
         break;
+      case Intrinsic::coro_raw_frame_ptr_offset:
+        CoroRawFramePtrOffsets.push_back(cast<CoroRawFramePtrOffsetInst>(II));
+        break;
       case Intrinsic::coro_frame:
         CoroFrames.push_back(cast<CoroFrameInst>(II));
         break;
@@ -379,6 +382,7 @@ void coro::Shape::buildFrom(Function &F) {
     this->SwitchLowering.ResumeSwitch = nullptr;
     this->SwitchLowering.PromiseAlloca = SwitchId->getPromise();
     this->SwitchLowering.ResumeEntryBlock = nullptr;
+    this->SwitchLowering.FramePtrOffset = None;
 
     for (auto AnySuspend : CoroSuspends) {
       auto Suspend = dyn_cast<CoroSuspendInst>(AnySuspend);

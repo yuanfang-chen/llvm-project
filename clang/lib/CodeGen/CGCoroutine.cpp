@@ -16,6 +16,7 @@
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/StmtVisitor.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include <cstdint>
 
 using namespace clang;
@@ -417,10 +418,70 @@ struct CallCoroEnd final : public EHScopeStack::Cleanup {
 }
 
 namespace {
+
+void overAllocateFrame(CodeGenFunction &CGF, llvm::CallInst *CI, bool IsAlloc) {
+  unsigned CoroSizeIdx = IsAlloc ? 0 : 1;
+  CodeGenModule &CGM = CGF.CGM;
+  CGBuilderTy &Builder = CGF.Builder;
+  auto OrigIP = Builder.saveIP();
+  Builder.SetInsertPoint(CI);
+  llvm::Function *CoroAlign =
+      CGM.getIntrinsic(llvm::Intrinsic::coro_align, CGF.SizeTy);
+  const auto &TI = CGM.getContext().getTargetInfo();
+  unsigned AlignOfNew = TI.getNewAlign() / TI.getCharWidth();
+  Value *AlignCall = Builder.CreateCall(CoroAlign);
+  // int x = coro_align - AlignOfNew;
+  // coro_size + (x > 0 ? x : 0)
+  Value *AlignOfNewInt = llvm::ConstantInt::get(CGF.SizeTy, AlignOfNew, true);
+  Value *Diff = Builder.CreateNSWSub(AlignCall, AlignOfNewInt);
+  Value *Zero = llvm::ConstantInt::getSigned(CGF.SizeTy, 0);
+  Value *Cmp = Builder.CreateICmp(llvm::CmpInst::ICMP_SGT, Diff, Zero);
+  Value *Extra = Builder.CreateSelect(Cmp, Diff, Zero);
+  Value *NewCoroSize = Builder.CreateAdd(CI->getArgOperand(CoroSizeIdx), Extra);
+  CI->setArgOperand(CoroSizeIdx, NewCoroSize);
+  Builder.restoreIP(OrigIP);
+}
+
+void handleOverAlignedFrame(CodeGenFunction &CGF, llvm::CallInst *CoroFree) {
+  // If the frame is not overaligned, this sequence should be optimized out.
+  auto SaveIP = CGF.Builder.saveIP();
+  CGF.Builder.SetInsertPoint(CoroFree->getParent()->getFirstNonPHIOrDbg());
+  assert(CoroFree->getNumUses() == 1);
+  auto *Dealloc = cast<llvm::CallInst>(CoroFree->user_back());
+  llvm::Function *CoroAlign =
+      CGF.CGM.getIntrinsic(llvm::Intrinsic::coro_align, CGF.SizeTy);
+  Value *AlignCall = CGF.Builder.CreateCall(CoroAlign);
+  const auto &TI = CGF.CGM.getContext().getTargetInfo();
+  Value *AlignOfNew =
+      llvm::ConstantInt::get(CGF.SizeTy, TI.getNewAlign() / TI.getCharWidth());
+  Value *Cmp =
+      CGF.Builder.CreateICmp(llvm::CmpInst::ICMP_UGT, AlignCall, AlignOfNew);
+  llvm::Function *RawFramePtrOffsetIntrin = CGF.CGM.getIntrinsic(
+      llvm::Intrinsic::coro_raw_frame_ptr_offset, CGF.Int32Ty);
+  llvm::Value *RawFramePtrOffset =
+      CGF.Builder.CreateCall(RawFramePtrOffsetIntrin);
+  Value *FramePtrAddrStart =
+      CGF.Builder.CreateInBoundsGEP(CoroFree, {RawFramePtrOffset});
+  llvm::Value *FramePtrAddr = CGF.Builder.CreatePointerCast(
+      FramePtrAddrStart, CGF.Int8PtrTy->getPointerTo());
+  Value *FramePtr =
+      CGF.Builder.CreateLoad({FramePtrAddr, CGF.getPointerAlign()});
+  Value *MemPtr = CGF.Builder.CreateSelect(Cmp, FramePtr, CoroFree);
+
+  Dealloc->setArgOperand(0, MemPtr);
+  assert(Dealloc->getNumArgOperands() >= 1);
+  if (Dealloc->getNumArgOperands() > 1) {
+    // Size may only be the second argument of allocator call.
+    auto *CoroSize = cast<llvm::IntrinsicInst>(Dealloc->getArgOperand(1));
+    if (CoroSize->getIntrinsicID() == llvm::Intrinsic::coro_size)
+      overAllocateFrame(CGF, Dealloc, /*IsAlloc*/ false);
+  }
+  CGF.Builder.restoreIP(SaveIP);
+}
+
 // Make sure to call coro.delete on scope exit.
 struct CallCoroDelete final : public EHScopeStack::Cleanup {
   Stmt *Deallocate;
-  Address FramePtrAddr;
 
   // Emit "if (coro.free(CoroId, CoroBegin)) Deallocate;"
 
@@ -447,21 +508,7 @@ struct CallCoroDelete final : public EHScopeStack::Cleanup {
       return;
     }
 
-    auto SaveIP = CGF.Builder.saveIP();
-    CGF.Builder.SetInsertPoint(FreeBB->getFirstNonPHIOrDbg());
-    llvm::Function *CoroAlign =
-        CGF.CGM.getIntrinsic(llvm::Intrinsic::coro_align, CGF.SizeTy);
-    Value *AlignCall = CGF.Builder.CreateCall(CoroAlign);
-    const auto &TI = CGF.CGM.getContext().getTargetInfo();
-    Value *AlignOfNew = llvm::ConstantInt::get(
-        CGF.SizeTy, TI.getNewAlign() / TI.getCharWidth());
-    Value *Cmp =
-        CGF.Builder.CreateICmp(llvm::CmpInst::ICMP_UGT, AlignCall, AlignOfNew);
-    Value *FramePtr = CGF.Builder.CreateLoad(FramePtrAddr);
-    Value *MemPtr = CGF.Builder.CreateSelect(Cmp, FramePtr, CoroFree);
-    CoroFree->replaceUsesWithIf(
-        MemPtr, [=](llvm::Use &U) { return U.getUser() != MemPtr; });
-    CGF.Builder.restoreIP(SaveIP);
+    handleOverAlignedFrame(CGF, CoroFree);
 
     auto *AfterFreeBB = CGF.createBasicBlock("after.coro.free");
     CGF.EmitBlock(AfterFreeBB);
@@ -480,8 +527,7 @@ struct CallCoroDelete final : public EHScopeStack::Cleanup {
     InsertPt->eraseFromParent();
     CGF.Builder.SetInsertPoint(AfterFreeBB);
   }
-  explicit CallCoroDelete(Stmt *DeallocStmt, Address FramePtrAddr)
-      : Deallocate(DeallocStmt), FramePtrAddr(FramePtrAddr) {}
+  explicit CallCoroDelete(Stmt *DeallocStmt) : Deallocate(DeallocStmt) {}
 };
 } // namespace
 
@@ -560,37 +606,6 @@ static void emitBodyAndFallthrough(CodeGenFunction &CGF,
       CGF.EmitStmt(OnFallthrough);
 }
 
-static void overAllocateFrame(CodeGenFunction &CGF, llvm::CallInst *CI) {
-  unsigned CoroSizeIdx = CI->getNumArgOperands();
-  for (unsigned i = 0; i < CI->getNumArgOperands(); ++i)
-    if (auto *CB = dyn_cast<llvm::CallBase>(CI->getArgOperand(i)))
-      if (CB->getIntrinsicID() == llvm::Intrinsic::coro_size) {
-        CoroSizeIdx = i;
-        break;
-      }
-  assert(CoroSizeIdx < CI->getNumArgOperands());
-
-  CodeGenModule &CGM = CGF.CGM;
-  CGBuilderTy &Builder = CGF.Builder;
-  auto OrigIP = Builder.saveIP();
-  Builder.SetInsertPoint(CI);
-  llvm::Function *CoroAlign =
-      CGM.getIntrinsic(llvm::Intrinsic::coro_align, CGF.SizeTy);
-  const auto &TI = CGM.getContext().getTargetInfo();
-  unsigned AlignOfNew = TI.getNewAlign() / TI.getCharWidth();
-  Value *AlignCall = Builder.CreateCall(CoroAlign);
-  // int x = coro_align - AlignOfNew;
-  // coro_size + (x > 0 ? x : 0)
-  Value *AlignOfNewInt = llvm::ConstantInt::get(CGF.SizeTy, AlignOfNew, true);
-  Value *Diff = Builder.CreateNSWSub(AlignCall, AlignOfNewInt);
-  Value *Zero = llvm::ConstantInt::getSigned(CGF.SizeTy, 0);
-  Value *Cmp = Builder.CreateICmp(llvm::CmpInst::ICMP_SGT, Diff, Zero);
-  Value *Extra = Builder.CreateSelect(Cmp, Diff, Zero);
-  Value *NewCoroSize = Builder.CreateAdd(CI->getArgOperand(CoroSizeIdx), Extra);
-  CI->setArgOperand(CoroSizeIdx, NewCoroSize);
-  Builder.restoreIP(OrigIP);
-}
-
 void CodeGenFunction::EmitCoroutineBody(const CoroutineBodyStmt &S) {
   auto *NullPtr = llvm::ConstantPointerNull::get(Builder.getInt8PtrTy());
   auto &TI = CGM.getContext().getTargetInfo();
@@ -598,8 +613,6 @@ void CodeGenFunction::EmitCoroutineBody(const CoroutineBodyStmt &S) {
 
   auto *EntryBB = Builder.GetInsertBlock();
   auto *AllocBB = createBasicBlock("coro.alloc");
-  // Align to overaligned boundary in this block. The over-allocation is
-  // handled performed during lowering BI__builtin_coro_size.
   auto *AlignAllocBB = createBasicBlock("coro.alloc.align");
   auto *InitBB = createBasicBlock("coro.init");
   auto *FinalBB = createBasicBlock("coro.final");
@@ -620,11 +633,8 @@ void CodeGenFunction::EmitCoroutineBody(const CoroutineBodyStmt &S) {
 
   EmitBlock(AllocBB);
   auto *AllocateCall = EmitScalarExpr(S.getAllocate());
-  overAllocateFrame(*this, cast<llvm::CallInst>(AllocateCall));
-
-  Address FramePtrAddr =
-      CreateIRTemp(S.getAllocate()->getType(), "alloc.frame.ptr");
-  Builder.CreateStore(AllocateCall, FramePtrAddr);
+  overAllocateFrame(*this, cast<llvm::CallInst>(AllocateCall),
+                    /*IsAlloc*/ true);
 
   // Handle allocation failure if 'ReturnStmtOnAllocFailure' was provided.
   if (auto *RetOnAllocFailure = S.getReturnStmtOnAllocFailure()) {
@@ -647,8 +657,17 @@ void CodeGenFunction::EmitCoroutineBody(const CoroutineBodyStmt &S) {
 
   auto *CoroAlign =
       Builder.CreateCall(CGM.getIntrinsic(llvm::Intrinsic::coro_align, SizeTy));
+  llvm::Value *RawAllocate = AllocateCall;
   AllocateCall =
       EmitBuiltinAlignTo(AllocateCall, CoroAlign, S.getAllocate(), true);
+  llvm::Function *RawFramePtrOffsetIntrin =
+      CGM.getIntrinsic(llvm::Intrinsic::coro_raw_frame_ptr_offset, Int32Ty);
+  llvm::Value *RawFramePtrOffset = Builder.CreateCall(RawFramePtrOffsetIntrin);
+  llvm::Value *FramePtrAddrStart =
+      Builder.CreateInBoundsGEP(AllocateCall, {RawFramePtrOffset});
+  llvm::Value *FramePtrAddr =
+      Builder.CreatePointerCast(FramePtrAddrStart, Int8PtrTy->getPointerTo());
+  Builder.CreateStore(RawAllocate, {FramePtrAddr, getPointerAlign()});
 
   EmitBlock(InitBB);
 
@@ -667,8 +686,7 @@ void CodeGenFunction::EmitCoroutineBody(const CoroutineBodyStmt &S) {
   {
     ParamReferenceReplacerRAII ParamReplacer(LocalDeclMap);
     CodeGenFunction::RunCleanupsScope ResumeScope(*this);
-    EHStack.pushCleanup<CallCoroDelete>(NormalAndEHCleanup, S.getDeallocate(),
-                                        FramePtrAddr);
+    EHStack.pushCleanup<CallCoroDelete>(NormalAndEHCleanup, S.getDeallocate());
 
     // Create parameter copies. We do it before creating a promise, since an
     // evolution of coroutine TS may allow promise constructor to observe

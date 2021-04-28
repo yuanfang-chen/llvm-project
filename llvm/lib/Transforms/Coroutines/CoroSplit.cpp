@@ -1025,6 +1025,17 @@ static void replaceFrameSizeAndAlign(coro::Shape &Shape) {
       CS->eraseFromParent();
     }
   }
+
+  if (!Shape.CoroRawFramePtrOffsets.empty()) {
+    auto *Intrin = Shape.CoroRawFramePtrOffsets.back();
+    auto *FramePtrOffset = ConstantInt::get(Intrin->getType(),
+                                           *Shape.SwitchLowering.FramePtrOffset);
+
+    for (CoroRawFramePtrOffsetInst *CS : Shape.CoroRawFramePtrOffsets) {
+      CS->replaceAllUsesWith(FramePtrOffset);
+      CS->eraseFromParent();
+    }
+  }
 }
 
 // Create a global constant array containing pointers to functions provided and

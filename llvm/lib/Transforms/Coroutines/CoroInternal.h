@@ -100,6 +100,7 @@ struct LLVM_LIBRARY_VISIBILITY Shape {
   SmallVector<AnyCoroEndInst *, 4> CoroEnds;
   SmallVector<CoroSizeInst *, 2> CoroSizes;
   SmallVector<CoroAlignInst *, 2> CoroAligns;
+  SmallVector<CoroRawFramePtrOffsetInst *, 2> CoroRawFramePtrOffsets;
   SmallVector<AnyCoroSuspendInst *, 4> CoroSuspends;
   SmallVector<CallInst*, 2> SwiftErrorOps;
 
@@ -133,6 +134,7 @@ struct LLVM_LIBRARY_VISIBILITY Shape {
     AllocaInst *PromiseAlloca;
     BasicBlock *ResumeEntryBlock;
     unsigned IndexField;
+    Optional<unsigned> FramePtrOffset;
     bool HasFinalSuspend;
   };
 
@@ -269,7 +271,6 @@ struct LLVM_LIBRARY_VISIBILITY Shape {
   /// \param CG - if non-null, will be updated for the new call
   void emitDealloc(IRBuilder<> &Builder, Value *Ptr, CallGraph *CG) const;
 
-  Shape() = default;
   explicit Shape(Function &F, bool ReuseFrameSlot = false)
       : ReuseFrameSlot(ReuseFrameSlot) {
     buildFrom(F);

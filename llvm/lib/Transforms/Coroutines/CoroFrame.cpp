@@ -486,6 +486,8 @@ public:
     return StructAlign;
   }
 
+  SmallVector<Field, 8> &getFields() { return Fields; }
+
   FieldIDType getLayoutFieldIndex(FieldIDType Id) const {
     assert(IsFinished && "not yet finished!");
     return Fields[Id].LayoutFieldIndex;
@@ -764,19 +766,46 @@ static StructType *buildFrameType(Function &F, coro::Shape &Shape,
   // Because multiple allocas may own the same field slot,
   // we add allocas to field here.
   B.addFieldForAllocas(F, FrameData, Shape);
-  // Add PromiseAlloca to Allocas list so that
-  // 1. updateLayoutIndex could update its index after
-  // `performOptimizedStructLayout`
-  // 2. it is processed in insertSpills.
-  if (Shape.ABI == coro::ABI::Switch && PromiseAlloca)
-    // We assume that the promise alloca won't be modified before
-    // CoroBegin and no alias will be create before CoroBegin.
-    FrameData.Allocas.emplace_back(
-        PromiseAlloca, DenseMap<Instruction *, llvm::Optional<APInt>>{}, false);
+
   // Create an entry for every spilled value.
   for (auto &S : FrameData.Spills) {
     FieldIDType Id = B.addField(S.first->getType(), None);
     FrameData.setFieldIndex(S.first, Id);
+  }
+
+  Optional<FieldIDType> FramePtrField = None;
+  if (Shape.ABI == coro::ABI::Switch) {
+    // Add PromiseAlloca to Allocas list so that
+    // 1. updateLayoutIndex could update its index after
+    // `performOptimizedStructLayout`
+    // 2. it is processed in insertSpills.
+    if (PromiseAlloca)
+      // We assume that the promise alloca won't be modified before
+      // CoroBegin and no alias will be create before CoroBegin.
+      FrameData.Allocas.emplace_back(
+          PromiseAlloca, DenseMap<Instruction *, llvm::Optional<APInt>>{},
+          false);
+
+    Align FrameAlign =
+        std::max_element(
+            B.getFields().begin(), B.getFields().end(),
+            [](auto &F1, auto &F2) { return F1.Alignment < F2.Alignment; })
+            ->Alignment;
+
+    // Check for over-alignment.
+    if (FrameAlign > Shape.getSwitchCoroId()->getAlignment()) {
+      BasicBlock &Entry = F.getEntryBlock();
+      IRBuilder<> Builder(&Entry, Entry.getFirstInsertionPt());
+
+      // Add alloca to frame.
+      Value *Mem = Shape.CoroBegin->getMem();
+      AllocaInst *FramePtrAddr =
+          Builder.CreateAlloca(Mem->getType(), nullptr, "alloc.frame.ptr");
+      FramePtrField = B.addFieldForAlloca(FramePtrAddr);
+      FrameData.setFieldIndex(FramePtrAddr, *FramePtrField);
+      FrameData.Allocas.emplace_back(
+          FramePtrAddr, DenseMap<Instruction *, llvm::Optional<APInt>>{}, true);
+    }
   }
 
   B.finish(FrameTy);
@@ -789,6 +818,12 @@ static StructType *buildFrameType(Function &F, coro::Shape &Shape,
     // In the switch ABI, remember the switch-index field.
     Shape.SwitchLowering.IndexField =
         B.getLayoutFieldIndex(*SwitchIndexFieldId);
+
+    if (FramePtrField) {
+      FieldIDType FieldIdx = B.getLayoutFieldIndex(*FramePtrField);
+      Shape.SwitchLowering.FramePtrOffset =
+          DL.getStructLayout(FrameTy)->getElementOffset(FieldIdx);
+    }
 
     // Also round the frame size up to a multiple of its alignment, as is
     // generally expected in C/C++.

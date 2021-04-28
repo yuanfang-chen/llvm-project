@@ -974,6 +974,33 @@ Semantics:
 The `coro.align` intrinsic is lowered to a constant representing the alignment
 of the coroutine frame.
 
+.. _coro.raw.frame.ptr.offset:
+
+'llvm.coro.raw.frame.ptr.offset' Intrinsic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+::
+
+    declare i32 @llvm.coro.raw.frame.ptr.offset.i32()
+    declare i64 @llvm.coro.raw.frame.ptr.offset.i64()
+
+Overview:
+"""""""""
+
+The '``llvm.coro.raw.frame.ptr.offset``' intrinsic returns the byte offset of 
+the raw memory block address (returned by the allocator) in coroutine frame. 
+This is only supported for switched-resume coroutines.
+
+Arguments:
+""""""""""
+
+None
+
+Semantics:
+""""""""""
+
+The `coro.raw.frame.ptr.offset` intrinsic is lowered to a constant representing
+the byte offset of the raw memory block address in coroutine frame.
+
 .. _coro.begin:
 
 'llvm.coro.begin' Intrinsic
