@@ -134,7 +134,7 @@ struct LLVM_LIBRARY_VISIBILITY Shape {
     AllocaInst *PromiseAlloca;
     BasicBlock *ResumeEntryBlock;
     unsigned IndexField;
-    Optional<unsigned> FramePtrOffset;
+    unsigned FramePtrOffset;
     bool HasFinalSuspend;
   };
 
@@ -271,6 +271,7 @@ struct LLVM_LIBRARY_VISIBILITY Shape {
   /// \param CG - if non-null, will be updated for the new call
   void emitDealloc(IRBuilder<> &Builder, Value *Ptr, CallGraph *CG) const;
 
+  Shape() = default;
   explicit Shape(Function &F, bool ReuseFrameSlot = false)
       : ReuseFrameSlot(ReuseFrameSlot) {
     buildFrom(F);

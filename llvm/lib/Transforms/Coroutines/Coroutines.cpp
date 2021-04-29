@@ -235,6 +235,7 @@ static void clear(coro::Shape &Shape) {
   Shape.CoroEnds.clear();
   Shape.CoroSizes.clear();
   Shape.CoroAligns.clear();
+  Shape.CoroRawFramePtrOffsets.clear();
   Shape.CoroSuspends.clear();
 
   Shape.FrameTy = nullptr;
@@ -382,7 +383,7 @@ void coro::Shape::buildFrom(Function &F) {
     this->SwitchLowering.ResumeSwitch = nullptr;
     this->SwitchLowering.PromiseAlloca = SwitchId->getPromise();
     this->SwitchLowering.ResumeEntryBlock = nullptr;
-    this->SwitchLowering.FramePtrOffset = None;
+    this->SwitchLowering.FramePtrOffset = 0;
 
     for (auto AnySuspend : CoroSuspends) {
       auto Suspend = dyn_cast<CoroSuspendInst>(AnySuspend);

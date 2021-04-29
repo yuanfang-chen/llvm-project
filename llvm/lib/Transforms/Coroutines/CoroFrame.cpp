@@ -793,11 +793,12 @@ static StructType *buildFrameType(Function &F, coro::Shape &Shape,
             ->Alignment;
 
     // Check for over-alignment.
-    if (FrameAlign > Shape.getSwitchCoroId()->getAlignment()) {
+    unsigned NewAlign = Shape.getSwitchCoroId()->getAlignment();
+    if (NewAlign && FrameAlign > NewAlign) {
       BasicBlock &Entry = F.getEntryBlock();
       IRBuilder<> Builder(&Entry, Entry.getFirstInsertionPt());
 
-      // Add alloca to frame.
+      // Reserve frame space for raw frame pointer.
       Value *Mem = Shape.CoroBegin->getMem();
       AllocaInst *FramePtrAddr =
           Builder.CreateAlloca(Mem->getType(), nullptr, "alloc.frame.ptr");

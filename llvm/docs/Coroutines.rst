@@ -988,6 +988,7 @@ Overview:
 
 The '``llvm.coro.raw.frame.ptr.offset``' intrinsic returns the byte offset of 
 the raw memory block address (returned by the allocator) in coroutine frame. 
+The returned value is only legal when the coroutine frame is overaligned.
 This is only supported for switched-resume coroutines.
 
 Arguments:

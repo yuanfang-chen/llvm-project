@@ -67,16 +67,24 @@ extern "C" void f0(global_new_delete_tag) {
   // CHECK-NEXT: %[[SEL:.+]] = select i1 %[[CMP]], i64 %[[DIFF]], i64 0
   // CHECK-NEXT: %[[NEWSIZE:.+]] = add i64 %[[SIZE]], %[[SEL]]
   // CHECK-NEXT: %[[MEM:.+]] = call noalias nonnull i8* @_Znwm(i64 %[[NEWSIZE]])
-  // CHECK-NEXT: br label %[[AlignAllocBB:.+]]
+  // CHECK-NEXT: br label %[[CheckAlignBB:.+]]
+
+  // CHECK: [[CheckAlignBB]]:
+  // CHECK: %[[ALIGN:.+]] = call i64 @llvm.coro.align.i64()
+  // CHECK: %[[CMP:.+]] = icmp ugt i64 %[[ALIGN]], 16
+  // CHECK: br i1 %[[CMP]], label %[[AlignAllocBB:.+]], label %[[InitBB]]
 
   // CHECK: [[AlignAllocBB]]:
-  // CHECK: %[[ALIGN:.+]] = call i64 @llvm.coro.align.i64()
   // CHECK: %[[ALIGNED:.+]] = getelementptr inbounds i8, i8* %[[MEM]]
   // CHECK: call void @llvm.assume(i1 true) [ "align"(i8* %[[ALIGNED]], i64 %[[ALIGN]]) ]
+  // CHECK: %[[OFFSET:.+]] = call i32 @llvm.coro.raw.frame.ptr.offset.i32()
+  // CHECK: %[[ADDR:.+]] = getelementptr inbounds i8, i8* %aligned_result, i32 %[[OFFSET]]
+  // CHECK: %[[ADDR2:.+]] = bitcast i8* %[[ADDR]] to i8**
+  // CHECK: store i8* %[[MEM]], i8** %[[ADDR2]], align 8
   // CHECK: br label %[[InitBB]]
 
   // CHECK: [[InitBB]]:
-  // CHECK: %[[PHI:.+]] = phi i8* [ null, %{{.+}} ], [ %[[ALIGNED]], %[[AlignAllocBB]] ]
+  // CHECK: %[[PHI:.+]] = phi i8* [ null, %{{.+}} ], [ %[[MEM]], %[[CheckAlignBB]] ], [ %[[ALIGNED]], %[[AlignAllocBB]] ]
   // CHECK: %[[FRAME:.+]] = call i8* @llvm.coro.begin(token %[[ID]], i8* %[[PHI]])
 
   // CHECK: %[[MEM:.+]] = call i8* @llvm.coro.free(token %[[ID]], i8* %[[FRAME]])
@@ -84,8 +92,15 @@ extern "C" void f0(global_new_delete_tag) {
   // CHECK: br i1 %[[NeedDealloc]], label %[[FreeBB:.+]], label %[[Afterwards:.+]]
 
   // CHECK: [[FreeBB]]:
-  // CHECK: call void @_ZdlPv(i8* %[[MEM]])
-  // CHECK: br label %[[Afterwards]]
+  // CHECK-NEXT: %[[ALIGN:.+]] = call i64 @llvm.coro.align.i64()
+  // CHECK-NEXT: %[[CMP:.+]] = icmp ugt i64 %[[ALIGN]], 16
+  // CHECK-NEXT: %[[OFFSET:.+]] = call i32 @llvm.coro.raw.frame.ptr.offset.i32()
+  // CHECK-NEXT: %[[ADDR:.+]] = getelementptr inbounds i8, i8* %[[MEM]], i32 %[[OFFSET]]
+  // CHECK-NEXT: %[[ADDR2:.+]] = bitcast i8* %[[ADDR]] to i8**
+  // CHECK-NEXT: %[[MEM2:.+]] = load i8*, i8** %[[ADDR2]], align 8
+  // CHECK-NEXT: %[[MEM3:.+]] = select i1 %[[CMP]], i8* %[[MEM2]], i8* %[[MEM]]
+  // CHECK-NEXT: call void @_ZdlPv(i8* %[[MEM3]])
+  // CHECK-NEXT: br label %[[Afterwards]]
 
   // CHECK: [[Afterwards]]:
   // CHECK: ret void
@@ -109,12 +124,12 @@ struct std::experimental::coroutine_traits<void, promise_new_tag> {
 extern "C" void f1(promise_new_tag ) {
   // CHECK: %[[ID:.+]] = call token @llvm.coro.id(i32 16
   // CHECK: %[[SIZE:.+]] = call i64 @llvm.coro.size.i64()
-  // CHECK: %[[NEWSIZE:.+]] = add i64 %[[SIZE]], %{{.+}}
+  // CHECK: %[[NEWSIZE:.+]] = add i64 %[[SIZE]],
   // CHECK: call i8* @_ZNSt12experimental16coroutine_traitsIJv15promise_new_tagEE12promise_typenwEm(i64 %[[NEWSIZE]])
 
   // CHECK: %[[FRAME:.+]] = call i8* @llvm.coro.begin(
-  // CHECK: %[[MEM:.+]] = call i8* @llvm.coro.free(token %[[ID]], i8* %[[FRAME]])
-  // CHECK: call void @_ZdlPv(i8* %[[MEM]])
+  // CHECK: call i8* @llvm.coro.free(token %[[ID]], i8* %[[FRAME]])
+  // CHECK: call void @_ZdlPv(i8* %{{.*}})
   co_return;
 }
 
@@ -139,10 +154,10 @@ extern "C" void f1a(promise_matching_placement_new_tag, int x, float y , double 
   // CHECK: store double %z, double* %z.addr, align 8
   // CHECK: %[[ID:.+]] = call token @llvm.coro.id(i32 16
   // CHECK: %[[SIZE:.+]] = call i64 @llvm.coro.size.i64()
-  // CHECK: %[[NEWSIZE:.+]] = add i64 %[[SIZE]], %{{.+}}
   // CHECK: %[[INT:.+]] = load i32, i32* %x.addr, align 4
   // CHECK: %[[FLOAT:.+]] = load float, float* %y.addr, align 4
   // CHECK: %[[DOUBLE:.+]] = load double, double* %z.addr, align 8
+  // CHECK: %[[NEWSIZE:.+]] = add i64 %[[SIZE]],
   // CHECK: call i8* @_ZNSt12experimental16coroutine_traitsIJv34promise_matching_placement_new_tagifdEE12promise_typenwEmS1_ifd(i64 %[[NEWSIZE]], i32 %[[INT]], float %[[FLOAT]], double %[[DOUBLE]])
   co_return;
 }
@@ -190,12 +205,15 @@ struct std::experimental::coroutine_traits<void, promise_delete_tag> {
 extern "C" void f2(promise_delete_tag) {
   // CHECK: %[[ID:.+]] = call token @llvm.coro.id(i32 16
   // CHECK: %[[SIZE:.+]] = call i64 @llvm.coro.size.i64()
-  // CHECK: %[[NEWSIZE:.+]] = add i64 %[[SIZE]], %{{.+}}
+  // CHECK: %[[NEWSIZE:.+]] = add i64 %[[SIZE]],
   // CHECK: call noalias nonnull i8* @_Znwm(i64 %[[NEWSIZE]])
 
   // CHECK: %[[FRAME:.+]] = call i8* @llvm.coro.begin(
   // CHECK: %[[MEM:.+]] = call i8* @llvm.coro.free(token %[[ID]], i8* %[[FRAME]])
-  // CHECK: call void @_ZNSt12experimental16coroutine_traitsIJv18promise_delete_tagEE12promise_typedlEPv(i8* %[[MEM]])
+  // CHECK: %[[ALIGN:.+]] = call i64 @llvm.coro.align.i64()
+  // CHECK: %[[CMP:.+]] = icmp ugt i64 %[[ALIGN]],
+  // CHECK: %[[MEM2:.+]] = select i1 %[[CMP]], i8* {{.*}}, i8* %[[MEM]]
+  // CHECK: call void @_ZNSt12experimental16coroutine_traitsIJv18promise_delete_tagEE12promise_typedlEPv(i8* %[[MEM2]])
   co_return;
 }
 
@@ -216,14 +234,16 @@ struct std::experimental::coroutine_traits<void, promise_sized_delete_tag> {
 extern "C" void f3(promise_sized_delete_tag) {
   // CHECK: %[[ID:.+]] = call token @llvm.coro.id(i32 16
   // CHECK: %[[SIZE:.+]] = call i64 @llvm.coro.size.i64()
-  // CHECK: %[[NEWSIZE:.+]] = add i64 %[[SIZE]], %{{.+}}
+  // CHECK: %[[NEWSIZE:.+]] = add i64 %[[SIZE]],
   // CHECK: call noalias nonnull i8* @_Znwm(i64 %[[NEWSIZE]])
 
   // CHECK: %[[FRAME:.+]] = call i8* @llvm.coro.begin(
   // CHECK: %[[MEM:.+]] = call i8* @llvm.coro.free(token %[[ID]], i8* %[[FRAME]])
-  // CHECK: %[[SIZE2:.+]] = call i64 @llvm.coro.size.i64()
-  // CHECK: %[[NEWSIZE2:.+]] = add i64 %[[SIZE2]], %{{.+}}
-  // CHECK: call void @_ZNSt12experimental16coroutine_traitsIJv24promise_sized_delete_tagEE12promise_typedlEPvm(i8* %[[MEM]], i64 %[[NEWSIZE2]])
+  // CHECK: call i64 @llvm.coro.align.i64()
+  // CHECK: %[[MEM2:.+]] = select i1 {{.*}}, i8* {{.*}}, i8* %[[MEM]]
+  // CHECK: %[[SIZE:.+]] = call i64 @llvm.coro.size.i64()
+  // CHECK: %[[SIZE2:.+]] = add i64 %[[SIZE]],
+  // CHECK: call void @_ZNSt12experimental16coroutine_traitsIJv24promise_sized_delete_tagEE12promise_typedlEPvm(i8* %[[MEM2]], i64 %[[SIZE2]])
   co_return;
 }
 
@@ -246,7 +266,7 @@ extern "C" int f4(promise_on_alloc_failure_tag) {
   // CHECK: %[[Gro:.+]] = alloca i32
   // CHECK: %[[ID:.+]] = call token @llvm.coro.id(i32 16
   // CHECK: %[[SIZE:.+]] = call i64 @llvm.coro.size.i64()
-  // CHECK: %[[NEWSIZE:.+]] = add i64 %[[SIZE]], %{{.+}}
+  // CHECK: %[[NEWSIZE:.+]] = add i64 %[[SIZE]],
   // CHECK: %[[MEM:.+]] = call noalias i8* @_ZnwmRKSt9nothrow_t(i64 %[[NEWSIZE]], %"struct.std::nothrow_t"* nonnull align 1 dereferenceable(1) @_ZStL7nothrow)
   // CHECK: %[[OK:.+]] = icmp ne i8* %[[MEM]], null
   // CHECK: br i1 %[[OK]], label %[[OKBB:.+]], label %[[ERRBB:.+]]

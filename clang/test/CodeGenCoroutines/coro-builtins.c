@@ -21,12 +21,7 @@ void f(int n) {
   __builtin_coro_noop();
 
   // CHECK-NEXT: %[[SIZE:.+]] = call i64 @llvm.coro.size.i64()
-  // CHECK-NEXT: %[[ALIGN:.+]] = call i64 @llvm.coro.align.i64()
-  // CHECK-NEXT: %[[DIFF:.+]] = sub nsw i64 %[[ALIGN]], 16
-  // CHECK-NEXT: %[[CMP:.+]] = icmp sgt i64 %[[DIFF]], 0
-  // CHECK-NEXT: %[[SEL:.+]] = select i1 %[[CMP]], i64 %[[DIFF]], i64 0
-  // CHECK-NEXT: %[[NEWSIZE:.+]] = add i64 %[[SIZE]], %[[SEL]]
-  // CHECK-NEXT: %[[MEM:.+]] = call i8* @myAlloc(i64 %[[NEWSIZE]])
+  // CHECK-NEXT: %[[MEM:.+]] = call i8* @myAlloc(i64 %[[SIZE]])
   // CHECK-NEXT: %[[FRAME:.+]] = call i8* @llvm.coro.begin(token %[[COROID]], i8* %[[MEM]])
   __builtin_coro_begin(myAlloc(__builtin_coro_size()));
 

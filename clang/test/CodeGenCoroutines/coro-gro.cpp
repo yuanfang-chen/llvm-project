@@ -49,7 +49,7 @@ int f() {
   // CHECK: %[[GroActive:.+]] = alloca i1
 
   // CHECK: %[[Size:.+]] = call i64 @llvm.coro.size.i64()
-  // CHECK: %[[NewSize:.+]] = add i64 %[[Size]], %{{.+}}
+  // CHECK: %[[NewSize:.+]] = add i64 %[[Size]],
   // CHECK: call noalias nonnull i8* @_Znwm(i64 %[[NewSize]])
   // CHECK: store i1 false, i1* %[[GroActive]]
   // CHECK: call void @_ZNSt12experimental16coroutine_traitsIJiEE12promise_typeC1Ev(
@@ -67,8 +67,8 @@ int f() {
   // Destroy promise and free the memory.
 
   // CHECK: call void @_ZNSt12experimental16coroutine_traitsIJiEE12promise_typeD1Ev(
-  // CHECK: %[[Mem:.+]] = call i8* @llvm.coro.free(
-  // CHECK: call void @_ZdlPv(i8* %[[Mem]])
+  // CHECK: call i8* @llvm.coro.free(
+  // CHECK: call void @_ZdlPv(i8* %{{.*}})
 
   // Initialize retval from Gro and destroy Gro
 

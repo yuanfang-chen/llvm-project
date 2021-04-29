@@ -78,12 +78,18 @@ void f() {
 
   // CHECK: [[Cleanup]]:
   // CHECK: call void @_ZNSt12experimental16coroutine_traitsIJvEE12promise_typeD1Ev(
-  // CHECK: %[[Mem0:.+]] = call i8* @llvm.coro.free(
-  // CHECK: call void @_ZdlPv(i8* %[[Mem0]]
+  // CHECK: %[[MEM:.+]] = call i8* @llvm.coro.free(
+  // CHECK: call i64 @llvm.coro.align.i64()
+  // CHECK: call i32 @llvm.coro.raw.frame.ptr.offset.i32()
+  // CHECK: %[[MEM2:.+]] = select i1 %{{.*}}, i8* %{{.*}}, i8* %[[MEM]]
+  // CHECK: call void @_ZdlPv(i8* %[[MEM2]])
 
   // CHECK: [[Dealloc]]:
-  // CHECK:   %[[Mem:.+]] = call i8* @llvm.coro.free(
-  // CHECK:   call void @_ZdlPv(i8* %[[Mem]])
+  // CHECK:   %[[MEM:.+]] = call i8* @llvm.coro.free(
+  // CHECK:   call i64 @llvm.coro.align.i64()
+  // CHECK:   call i32 @llvm.coro.raw.frame.ptr.offset.i32()
+  // CHECK:   %[[MEM2:.+]] = select i1 %{{.*}}, i8* %{{.*}}, i8* %[[MEM]]
+  // CHECK:   call void @_ZdlPv(i8* %[[MEM2]])
 
   co_return;
 }

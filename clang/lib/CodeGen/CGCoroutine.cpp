@@ -429,15 +429,15 @@ void overAllocateFrame(CodeGenFunction &CGF, llvm::CallInst *CI, bool IsAlloc) {
       CGM.getIntrinsic(llvm::Intrinsic::coro_align, CGF.SizeTy);
   const auto &TI = CGM.getContext().getTargetInfo();
   unsigned AlignOfNew = TI.getNewAlign() / TI.getCharWidth();
-  Value *AlignCall = Builder.CreateCall(CoroAlign);
+  auto *AlignCall = Builder.CreateCall(CoroAlign);
   // int x = coro_align - AlignOfNew;
   // coro_size + (x > 0 ? x : 0)
-  Value *AlignOfNewInt = llvm::ConstantInt::get(CGF.SizeTy, AlignOfNew, true);
-  Value *Diff = Builder.CreateNSWSub(AlignCall, AlignOfNewInt);
-  Value *Zero = llvm::ConstantInt::getSigned(CGF.SizeTy, 0);
-  Value *Cmp = Builder.CreateICmp(llvm::CmpInst::ICMP_SGT, Diff, Zero);
-  Value *Extra = Builder.CreateSelect(Cmp, Diff, Zero);
-  Value *NewCoroSize = Builder.CreateAdd(CI->getArgOperand(CoroSizeIdx), Extra);
+  auto *AlignOfNewInt = llvm::ConstantInt::get(CGF.SizeTy, AlignOfNew, true);
+  auto *Diff = Builder.CreateNSWSub(AlignCall, AlignOfNewInt);
+  auto *Zero = llvm::ConstantInt::getSigned(CGF.SizeTy, 0);
+  auto *Cmp = Builder.CreateICmp(llvm::CmpInst::ICMP_SGT, Diff, Zero);
+  auto *Extra = Builder.CreateSelect(Cmp, Diff, Zero);
+  auto *NewCoroSize = Builder.CreateAdd(CI->getArgOperand(CoroSizeIdx), Extra);
   CI->setArgOperand(CoroSizeIdx, NewCoroSize);
   Builder.restoreIP(OrigIP);
 }
@@ -450,23 +450,22 @@ void handleOverAlignedFrame(CodeGenFunction &CGF, llvm::CallInst *CoroFree) {
   auto *Dealloc = cast<llvm::CallInst>(CoroFree->user_back());
   llvm::Function *CoroAlign =
       CGF.CGM.getIntrinsic(llvm::Intrinsic::coro_align, CGF.SizeTy);
-  Value *AlignCall = CGF.Builder.CreateCall(CoroAlign);
+  auto *AlignCall = CGF.Builder.CreateCall(CoroAlign);
   const auto &TI = CGF.CGM.getContext().getTargetInfo();
-  Value *AlignOfNew =
+  auto *AlignOfNew =
       llvm::ConstantInt::get(CGF.SizeTy, TI.getNewAlign() / TI.getCharWidth());
-  Value *Cmp =
+  auto *Cmp =
       CGF.Builder.CreateICmp(llvm::CmpInst::ICMP_UGT, AlignCall, AlignOfNew);
   llvm::Function *RawFramePtrOffsetIntrin = CGF.CGM.getIntrinsic(
       llvm::Intrinsic::coro_raw_frame_ptr_offset, CGF.Int32Ty);
-  llvm::Value *RawFramePtrOffset =
-      CGF.Builder.CreateCall(RawFramePtrOffsetIntrin);
-  Value *FramePtrAddrStart =
+  auto *RawFramePtrOffset = CGF.Builder.CreateCall(RawFramePtrOffsetIntrin);
+  auto *FramePtrAddrStart =
       CGF.Builder.CreateInBoundsGEP(CoroFree, {RawFramePtrOffset});
-  llvm::Value *FramePtrAddr = CGF.Builder.CreatePointerCast(
+  auto *FramePtrAddr = CGF.Builder.CreatePointerCast(
       FramePtrAddrStart, CGF.Int8PtrTy->getPointerTo());
-  Value *FramePtr =
+  auto *FramePtr =
       CGF.Builder.CreateLoad({FramePtrAddr, CGF.getPointerAlign()});
-  Value *MemPtr = CGF.Builder.CreateSelect(Cmp, FramePtr, CoroFree);
+  auto *MemPtr = CGF.Builder.CreateSelect(Cmp, FramePtr, CoroFree);
 
   Dealloc->setArgOperand(0, MemPtr);
   assert(Dealloc->getNumArgOperands() >= 1);
@@ -614,6 +613,7 @@ void CodeGenFunction::EmitCoroutineBody(const CoroutineBodyStmt &S) {
   auto *EntryBB = Builder.GetInsertBlock();
   auto *AllocBB = createBasicBlock("coro.alloc");
   auto *AlignAllocBB = createBasicBlock("coro.alloc.align");
+  auto *CheckAlignBB = createBasicBlock("coro.check.align");
   auto *InitBB = createBasicBlock("coro.init");
   auto *FinalBB = createBasicBlock("coro.final");
   auto *RetBB = createBasicBlock("coro.ret");
@@ -641,40 +641,47 @@ void CodeGenFunction::EmitCoroutineBody(const CoroutineBodyStmt &S) {
     auto *RetOnFailureBB = createBasicBlock("coro.ret.on.failure");
 
     // See if allocation was successful.
-    auto *NullPtr = llvm::ConstantPointerNull::get(Int8PtrTy);
     auto *Cond = Builder.CreateICmpNE(AllocateCall, NullPtr);
-    Builder.CreateCondBr(Cond, AlignAllocBB, RetOnFailureBB);
+    Builder.CreateCondBr(Cond, CheckAlignBB, RetOnFailureBB);
 
     // If not, return OnAllocFailure object.
     EmitBlock(RetOnFailureBB);
     EmitStmt(RetOnAllocFailure);
   }
   else {
-    Builder.CreateBr(AlignAllocBB);
+    Builder.CreateBr(CheckAlignBB);
   }
 
-  EmitBlock(AlignAllocBB);
+  EmitBlock(CheckAlignBB);
 
   auto *CoroAlign =
       Builder.CreateCall(CGM.getIntrinsic(llvm::Intrinsic::coro_align, SizeTy));
-  llvm::Value *RawAllocate = AllocateCall;
-  AllocateCall =
+  auto *AlignOfNew =
+      llvm::ConstantInt::get(SizeTy, TI.getNewAlign() / TI.getCharWidth());
+  auto *Cmp =
+      Builder.CreateICmp(llvm::CmpInst::ICMP_UGT, CoroAlign, AlignOfNew);
+  Builder.CreateCondBr(Cmp, AlignAllocBB, InitBB);
+
+  EmitBlock(AlignAllocBB);
+
+  auto *AllocateCallAlign =
       EmitBuiltinAlignTo(AllocateCall, CoroAlign, S.getAllocate(), true);
   llvm::Function *RawFramePtrOffsetIntrin =
       CGM.getIntrinsic(llvm::Intrinsic::coro_raw_frame_ptr_offset, Int32Ty);
-  llvm::Value *RawFramePtrOffset = Builder.CreateCall(RawFramePtrOffsetIntrin);
-  llvm::Value *FramePtrAddrStart =
-      Builder.CreateInBoundsGEP(AllocateCall, {RawFramePtrOffset});
-  llvm::Value *FramePtrAddr =
+  auto *RawFramePtrOffset = Builder.CreateCall(RawFramePtrOffsetIntrin);
+  auto *FramePtrAddrStart =
+      Builder.CreateInBoundsGEP(AllocateCallAlign, {RawFramePtrOffset});
+  auto *FramePtrAddr =
       Builder.CreatePointerCast(FramePtrAddrStart, Int8PtrTy->getPointerTo());
-  Builder.CreateStore(RawAllocate, {FramePtrAddr, getPointerAlign()});
+  Builder.CreateStore(AllocateCall, {FramePtrAddr, getPointerAlign()});
 
   EmitBlock(InitBB);
 
   // Pass the result of the allocation to coro.begin.
-  auto *Phi = Builder.CreatePHI(VoidPtrTy, 2);
+  auto *Phi = Builder.CreatePHI(VoidPtrTy, 3);
   Phi->addIncoming(NullPtr, EntryBB);
-  Phi->addIncoming(AllocateCall, AlignAllocBB);
+  Phi->addIncoming(AllocateCall, CheckAlignBB);
+  Phi->addIncoming(AllocateCallAlign, AlignAllocBB);
   auto *CoroBegin = Builder.CreateCall(
       CGM.getIntrinsic(llvm::Intrinsic::coro_begin), {CoroId, Phi});
   CurCoro.Data->CoroBegin = CoroBegin;
