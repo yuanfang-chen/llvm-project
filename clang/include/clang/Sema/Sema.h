@@ -6233,7 +6233,9 @@ public:
                                        ArrayRef<QualType> Params);
 
   bool FindDeallocationFunction(SourceLocation StartLoc, CXXRecordDecl *RD,
-                                DeclarationName Name, FunctionDecl* &Operator,
+                                DeclarationName Name, FunctionDecl *&Operator,
+                                const bool *WantSize = nullptr,
+                                const bool *WantAlign = nullptr,
                                 bool Diagnose = true);
   FunctionDecl *FindUsualDeallocationFunction(SourceLocation StartLoc,
                                               bool CanProvideSize,

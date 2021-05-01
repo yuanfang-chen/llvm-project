@@ -9162,9 +9162,11 @@ bool Sema::ShouldDeleteSpecialMember(CXXMethodDecl *MD, CXXSpecialMember CSM,
   if (CSM == CXXDestructor && MD->isVirtual()) {
     FunctionDecl *OperatorDelete = nullptr;
     DeclarationName Name =
-      Context.DeclarationNames.getCXXOperatorName(OO_Delete);
+        Context.DeclarationNames.getCXXOperatorName(OO_Delete);
     if (FindDeallocationFunction(MD->getLocation(), MD->getParent(), Name,
-                                 OperatorDelete, /*Diagnose*/false)) {
+                                 OperatorDelete, /*WantSize*/ nullptr,
+                                 /*WantAlign*/ nullptr,
+                                 /*Diagnose*/ false)) {
       if (Diagnose)
         Diag(RD->getLocation(), diag::note_deleted_dtor_no_operator_delete);
       return true;

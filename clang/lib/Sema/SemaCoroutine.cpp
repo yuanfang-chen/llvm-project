@@ -1063,6 +1063,7 @@ static Expr *buildStdNoThrowDeclRef(Sema &S, SourceLocation Loc) {
 static FunctionDecl *findDeleteForPromise(Sema &S, SourceLocation Loc,
                                           QualType PromiseType) {
   FunctionDecl *OperatorDelete = nullptr;
+  FunctionDecl *AlignedOperatorDelete = nullptr;
 
   DeclarationName DeleteName =
       S.Context.DeclarationNames.getCXXOperatorName(OO_Delete);
@@ -1071,6 +1072,9 @@ static FunctionDecl *findDeleteForPromise(Sema &S, SourceLocation Loc,
   assert(PointeeRD && "PromiseType must be a CxxRecordDecl type");
 
   if (S.FindDeallocationFunction(Loc, PointeeRD, DeleteName, OperatorDelete))
+    return nullptr;
+
+  if (S.FindDeallocationFunction(Loc, PointeeRD, DeleteName, AlignedOperatorDelete))
     return nullptr;
 
   if (!OperatorDelete) {
@@ -1245,6 +1249,13 @@ bool CoroutineStmtBuilder::makeReturnOnAllocFailure() {
   return true;
 }
 
+// promise_type::operator new(std::size_t, std::align_val_t, Args...)
+// promise_type::operator new(std::size_t, std::align_val_t)
+// promise_type::operator new(std::size_t, Args...)
+// promise_type::operator new(std::size_t)
+// ::operator new(std::size_t, std::align_val_t)
+// ::operator new(std::size_t)
+
 bool CoroutineStmtBuilder::makeNewAndDeleteExpr() {
   // Form and check allocation and deallocation calls.
   assert(!IsPromiseDependentType &&
@@ -1254,9 +1265,7 @@ bool CoroutineStmtBuilder::makeNewAndDeleteExpr() {
   if (S.RequireCompleteType(Loc, PromiseType, diag::err_incomplete_type))
     return false;
 
-  const bool RequiresNoThrowAlloc = ReturnStmtOnAllocFailure != nullptr;
-
-  // [dcl.fct.def.coroutine]/7
+  // [dcl.fct.def.coroutine]/9
   // Lookup allocation functions using a parameter list composed of the
   // requested size of the coroutine state being allocated, followed by
   // the coroutine function's arguments. If a matching allocation function
@@ -1264,12 +1273,14 @@ bool CoroutineStmtBuilder::makeNewAndDeleteExpr() {
   // the requested size.
 
   FunctionDecl *OperatorNew = nullptr;
+  FunctionDecl *AlignedOperatorNew = nullptr;
   FunctionDecl *OperatorDelete = nullptr;
+  FunctionDecl *AlignedOperatorDelete = nullptr;
   FunctionDecl *UnusedResult = nullptr;
-  bool PassAlignment = false;
+  bool PassAlignment = true;
   SmallVector<Expr *, 1> PlacementArgs;
 
-  // [dcl.fct.def.coroutine]/7
+  // [dcl.fct.def.coroutine]/9
   // "The allocation function’s name is looked up in the scope of P.
   // [...] If the lookup finds an allocation function in the scope of P,
   // overload resolution is performed on a function call created by assembling
@@ -1309,34 +1320,99 @@ bool CoroutineStmtBuilder::makeNewAndDeleteExpr() {
 
     PlacementArgs.push_back(PDRefExpr.get());
   }
+
+  // Tentatively implement P2014R0 - "Proposed resolution for US061+US062 -
+  // aligned allocation of coroutine frames" Option 1.
+
   S.FindAllocationFunctions(Loc, SourceRange(), /*NewScope*/ Sema::AFS_Class,
                             /*DeleteScope*/ Sema::AFS_Both, PromiseType,
                             /*isArray*/ false, PassAlignment, PlacementArgs,
-                            OperatorNew, UnusedResult, /*Diagnose*/ false);
+                            AlignedOperatorNew, UnusedResult,
+                            /*Diagnose*/ false);
+  // If the overload resolution found non-aligned version, save it.
+  if (AlignedOperatorNew && !PassAlignment) {
+    OperatorNew = AlignedOperatorNew;
+    AlignedOperatorNew = nullptr;
+  }
 
-  // [dcl.fct.def.coroutine]/7
+  // [dcl.fct.def.coroutine]/9
   // "If no matching function is found, overload resolution is performed again
   // on a function call created by passing just the amount of space required as
   // an argument of type std::size_t."
-  if (!OperatorNew && !PlacementArgs.empty()) {
-    PlacementArgs.clear();
+  if (!AlignedOperatorNew && !PlacementArgs.empty()) {
+    PassAlignment = true;
+    S.FindAllocationFunctions(Loc, SourceRange(), /*NewScope*/ Sema::AFS_Class,
+                              /*DeleteScope*/ Sema::AFS_Both, PromiseType,
+                              /*isArray*/ false, PassAlignment,
+                              /*PlaceArgs*/ {}, AlignedOperatorNew,
+                              UnusedResult,
+                              /*Diagnose*/ false);
+    if (AlignedOperatorNew && !PassAlignment) {
+      if (!OperatorNew)
+        OperatorNew = AlignedOperatorNew;
+      AlignedOperatorNew = nullptr;
+    }
+  }
+
+  if (!OperatorNew) {
+    PassAlignment = false;
     S.FindAllocationFunctions(Loc, SourceRange(), /*NewScope*/ Sema::AFS_Class,
                               /*DeleteScope*/ Sema::AFS_Both, PromiseType,
                               /*isArray*/ false, PassAlignment, PlacementArgs,
-                              OperatorNew, UnusedResult, /*Diagnose*/ false);
+                              OperatorNew, UnusedResult,
+                              /*Diagnose*/ false);
   }
 
-  // [dcl.fct.def.coroutine]/7
+  if (!OperatorNew && !PlacementArgs.empty()) {
+    PassAlignment = false;
+    S.FindAllocationFunctions(Loc, SourceRange(), /*NewScope*/ Sema::AFS_Class,
+                              /*DeleteScope*/ Sema::AFS_Both, PromiseType,
+                              /*isArray*/ false, PassAlignment,
+                              /*PlaceArgs*/ {}, OperatorNew, UnusedResult,
+                              /*Diagnose*/ false);
+  }
+
+  if (!AlignedOperatorNew && OperatorNew)
+    AlignedOperatorNew = OperatorNew;
+
+  // [dcl.fct.def.coroutine]/9
   // "The allocation function’s name is looked up in the scope of P. If this
   // lookup fails, the allocation function’s name is looked up in the global
   // scope."
-  if (!OperatorNew) {
+  if (!AlignedOperatorNew) {
+    PassAlignment = true;
     S.FindAllocationFunctions(Loc, SourceRange(), /*NewScope*/ Sema::AFS_Global,
                               /*DeleteScope*/ Sema::AFS_Both, PromiseType,
-                              /*isArray*/ false, PassAlignment, PlacementArgs,
-                              OperatorNew, UnusedResult);
+                              /*isArray*/ false, PassAlignment,
+                              /*PlaceArgs*/ {}, AlignedOperatorNew,
+                              UnusedResult);
+    if (AlignedOperatorNew && !PassAlignment) {
+      if (!OperatorNew)
+        OperatorNew = AlignedOperatorNew;
+      AlignedOperatorNew = nullptr;
+    }
   }
 
+  if (!OperatorNew) {
+    PassAlignment = false;
+    S.FindAllocationFunctions(Loc, SourceRange(), /*NewScope*/ Sema::AFS_Global,
+                              /*DeleteScope*/ Sema::AFS_Both, PromiseType,
+                              /*isArray*/ false, PassAlignment,
+                              /*PlaceArgs*/ {}, OperatorNew, UnusedResult);
+  }
+
+  // [dcl.fct.def.coroutine]/10
+  // "The unqualified-id get_return_object_on_allocation_failure is looked up in
+  // the scope of class P by class member access lookup. If a declaration is
+  // found, then the result of a call to an allocation function used to obtain
+  // storage for the coroutine state is assumed to return nullptr if it fails to
+  // obtain storage, and if a global allocation function is selected, the
+  // ::operator new(size_t, nothrow_t) form shall be used."
+
+  // FIXME: Should [dcl.fct.def.coroutine]/10 modified to
+  // "::operator new(size_t, align_t nothrow_t)" for overalignment?
+
+  const bool RequiresNoThrowAlloc = ReturnStmtOnAllocFailure != nullptr;
   bool IsGlobalOverload =
       OperatorNew && !isa<CXXRecordDecl>(OperatorNew->getDeclContext());
   // If we didn't find a class-local new declaration and non-throwing new
@@ -1348,13 +1424,23 @@ bool CoroutineStmtBuilder::makeNewAndDeleteExpr() {
       return false;
     PlacementArgs = {StdNoThrow};
     OperatorNew = nullptr;
+    PassAlignment = false;
     S.FindAllocationFunctions(Loc, SourceRange(), /*NewScope*/ Sema::AFS_Both,
                               /*DeleteScope*/ Sema::AFS_Both, PromiseType,
                               /*isArray*/ false, PassAlignment, PlacementArgs,
                               OperatorNew, UnusedResult);
   }
 
-  if (!OperatorNew)
+  // "If the coroutine state has new-extended alignment and an
+  // overaligned-allocation-function was found then the coroutine state is
+  // allocated by a call to the overaligned-allocation-function. Otherwise, if
+  // the normal-allocation-function was found then the coroutine state is
+  // allocated by a call to the normal-allocation-function. Otherwise, the
+  // program is ill-formed."
+  // If either only OperatorNew is found when the frame is overaligned or only
+  // AlignedOperatorNew is found when the frame is not overaligned. The diagnose
+  // happen in CoroSplit where the frame alignment is known.
+  if (!OperatorNew && !AlignedOperatorNew)
     return false;
 
   if (RequiresNoThrowAlloc) {

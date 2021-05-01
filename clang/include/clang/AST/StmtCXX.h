@@ -352,7 +352,9 @@ public:
     Stmt *OnException = nullptr;
     Stmt *OnFallthrough = nullptr;
     Expr *Allocate = nullptr;
+    Expr *AllocateAlign = nullptr;
     Expr *Deallocate = nullptr;
+    Expr *DeallocateAlign = nullptr;
     Expr *ReturnValue = nullptr;
     Stmt *ResultDecl = nullptr;
     Stmt *ReturnStmt = nullptr;
